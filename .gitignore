@@ -1,0 +1,47 @@
+# Logs
+*.log
+logs/
+/var/log/
+
+# Configuration files with sensitive data
+config/telegram.conf
+*.env
+.env.*
+
+# Backup files
+*.backup
+*.bak
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
+
+# Local development
+local/
+dev/
+test/
+
+# Docker volumes and data
+volumes/
+data/
+
+# SSH keys (if any accidentally added)
+*.pem
+*.key
+id_*

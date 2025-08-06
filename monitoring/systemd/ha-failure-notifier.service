@@ -1,0 +1,16 @@
+[Unit]
+Description=HA Failure Notifier: обрабатывает сбои и отправляет Telegram уведомления
+Documentation=man:systemd.service(5)
+After=network-online.target ha-watchdog.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ha-failure-notifier.sh
+User=root
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

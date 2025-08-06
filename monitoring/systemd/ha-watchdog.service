@@ -1,0 +1,16 @@
+[Unit]
+Description=HA Watchdog: следит за состоянием системы
+Documentation=man:systemd.service(5)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ha-watchdog.sh
+User=root
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=HA Update Checker: проверяет обновления системы и Docker
+Documentation=man:systemd.service(5)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/ha-monitoring/scripts/update-checker.sh
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

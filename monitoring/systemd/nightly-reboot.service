@@ -1,0 +1,15 @@
+[Unit]
+Description=Nightly System Reboot
+Documentation=man:systemd.service(5)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nightly-reboot.sh
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
