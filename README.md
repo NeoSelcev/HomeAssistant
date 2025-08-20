@@ -48,10 +48,6 @@ services:
   nodered:
     image: nodered/node-red:latest
     ports: 1880
-    
-  tailscale:
-    image: tailscale/tailscale:latest
-    ports: VPN tunnel
 ```
 
 ## 🔧 Monitoring Services
@@ -350,24 +346,45 @@ ssh rpi "htop -d 5 -n 3"
 project/
 ├── 📋 README.md                           # Эта документация
 ├── 🔧 manage.ps1                          # Управление с Windows (9 команд)
-├── � ssh-config.md                       # SSH настройки подключения
-├── �📁 monitoring/                         # Система мониторинга
+├── 🐳 docker-compose.yml                  # Docker стек (HA + Node-RED)
+├── 📁 monitoring/                         # Система мониторинга
 │   ├── scripts/
-│   │   ├── ha-watchdog.sh                 # Мониторинг каждые 15 сек
-│   │   └── ha-responder.sh                # Обработка сбоев + Telegram
+│   │   ├── ha-watchdog.sh                 # Мониторинг каждые 2 минуты
+│   │   ├── ha-failure-notifier.sh         # Обработка сбоев + Telegram
+│   │   ├── nightly-reboot.sh              # Ночная перезагрузка
+│   │   └── update-checker.sh              # Проверка обновлений
 │   ├── systemd/                           # Автозапуск сервисов
 │   │   ├── ha-watchdog.service/timer      # SystemD конфигурация
-│   │   └── ha-responder.service/timer     
+│   │   ├── ha-failure-notifier.service/timer     
+│   │   ├── nightly-reboot.service/timer
+│   │   └── update-checker.service/timer
 │   ├── config/
-│   │   ├── ha-watchdog.conf               # Пороги мониторинга
-│   │   └── telegram.conf                  # Настройки бота (создать)
+│   │   └── ha-watchdog.conf               # Пороги мониторинга
 │   └── install.sh                         # Автоматическая установка
+├── 📁 tailscale_native/                   # Нативная конфигурация Tailscale
+│   ├── systemd/                           # Сервисы: tailscaled, serve, funnel
+│   ├── config/tailscaled.default          # Переменные окружения
+│   └── restore-tailscale.sh               # Скрипт восстановления
 ├── 📁 management/                         
 │   └── system-diagnostic.sh               # Комплексная диагностика
 └── 📁 docs/                               # Сетевая архитектура
     ├── network-infrastructure.md          # Топология домашней сети
     ├── raspberrypi_ha_stack_complete_UPDATED.md  # Полная архитектура Pi
     └── images/                            # Схемы и диаграммы
+```
+
+## 🌐 Tailscale VPN Configuration
+
+### **Current Setup**
+- **Device**: rpi3-20250711 (единственное активное)
+- **IP**: 100.103.54.125
+- **Public URL**: https://rpi3-20250711.tail586076.ts.net/
+- **Local HTTPS**: https://100.103.54.125:8443/
+
+### **Restore Tailscale (if needed)**
+```bash
+cd tailscale_native/
+sudo ./restore-tailscale.sh
 ```
 
 ## 🔔 Telegram уведомления

@@ -215,7 +215,7 @@ check_docker() {
     
     # Containers
     log_check "INFO" "Container Status:"
-    local containers=("homeassistant" "nodered" "tailscale")
+    local containers=("homeassistant" "nodered")
     for container in "${containers[@]}"; do
         if docker inspect "$container" >/dev/null 2>&1; then
             local status=$(docker inspect -f '{{.State.Status}}' "$container")

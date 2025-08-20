@@ -29,11 +29,14 @@ services:
     image: nodered/node-red:latest
     ports: 1880
     volumes: ./nodered:/data
-    
-  tailscale:
-    image: tailscale/tailscale:latest
-    volumes: ./tailscale:/var/lib/tailscale
 ```
+
+### Tailscale VPN (Native Installation)
+- **Service**: Native systemd services (not containerized)
+- **Device**: rpi3-20250711
+- **IP**: 100.103.54.125  
+- **Public HTTPS**: https://rpi3-20250711.tail586076.ts.net/
+- **Services**: tailscaled, tailscale-serve-ha, tailscale-funnel-ha
 
 ### Service Management
 - **Working Directory**: `/srv/home`
@@ -96,9 +99,20 @@ services:
 
 ## 3. systemd службы
 
-### tailscale-serve-ha.service
+## 3. Tailscale Native Configuration
 
+### Installation & Restore
+```bash
+# Restore from backup
+cd /path/to/project/tailscale_native/
+sudo ./restore-tailscale.sh
+```
+
+### systemd Services
+
+#### tailscale-serve-ha.service
 ```ini
+# Цель: HTTPS прокси для HA через порт 8443
 [Unit]
 Description=Tailscale Serve HTTPS for Home Assistant (port 8443)
 After=network.target docker.service tailscaled.service
@@ -114,9 +128,9 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-### tailscale-funnel-ha.service
-
+#### tailscale-funnel-ha.service
 ```ini
+# Цель: Публичный HTTPS доступ из интернета
 [Unit]
 Description=Tailscale Funnel for Home Assistant (public HTTPS)
 After=network.target docker.service tailscaled.service

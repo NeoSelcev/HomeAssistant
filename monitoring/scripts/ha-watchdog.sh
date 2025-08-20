@@ -15,7 +15,7 @@ else
     DISK_THRESHOLD_KB=500000
     TEMP_THRESHOLD=70
     HA_CONTAINER="homeassistant"
-    CONTAINERS=("tailscale" "homeassistant" "nodered")
+    CONTAINERS=("homeassistant" "nodered")
     IFACE="wlan0"
     HA_PORT=8123
     NODERED_PORT=1880
