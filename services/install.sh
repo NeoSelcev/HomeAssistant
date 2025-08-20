@@ -26,10 +26,10 @@ apt install -y bc curl jq
 
 # Копируем скрипты
 echo "📋 Установка скриптов..."
-cp scripts/ha-watchdog.sh /usr/local/bin/ha-watchdog.sh
-cp scripts/ha-failure-notifier.sh /usr/local/bin/ha-failure-notifier.sh
-cp scripts/nightly-reboot.sh /usr/local/bin/nightly-reboot.sh
-cp scripts/update-checker.sh /usr/local/bin/update-checker.sh
+cp monitoring/ha-watchdog/ha-watchdog.sh /usr/local/bin/ha-watchdog.sh
+cp monitoring/ha-failure-notifier/ha-failure-notifier.sh /usr/local/bin/ha-failure-notifier.sh
+cp system/nightly-reboot/nightly-reboot.sh /usr/local/bin/nightly-reboot.sh
+cp system/update-checker/update-checker.sh /usr/local/bin/update-checker.sh
 chmod +x /usr/local/bin/ha-watchdog.sh
 chmod +x /usr/local/bin/ha-failure-notifier.sh
 chmod +x /usr/local/bin/nightly-reboot.sh
@@ -37,7 +37,7 @@ chmod +x /usr/local/bin/update-checker.sh
 
 # Копируем конфигурацию
 if [[ ! -f /etc/ha-watchdog/config ]]; then
-    cp config/ha-watchdog.conf /etc/ha-watchdog/config
+    cp monitoring/ha-watchdog/ha-watchdog.conf /etc/ha-watchdog/config
     echo "⚙️ Конфигурация скопирована в /etc/ha-watchdog/config"
     echo "📝 Не забудьте настроить Telegram токены!"
 fi
@@ -45,13 +45,17 @@ fi
 # Создаем systemd сервисы
 echo "🔧 Создание systemd сервисов..."
 
-# Копируем systemd файлы
-cp systemd/ha-watchdog.service /etc/systemd/system/
-cp systemd/ha-watchdog.timer /etc/systemd/system/
-cp systemd/ha-failure-notifier.service /etc/systemd/system/
-cp systemd/ha-failure-notifier.timer /etc/systemd/system/
-cp systemd/nightly-reboot.service /etc/systemd/system/
-cp systemd/nightly-reboot.timer /etc/systemd/system/
+# Копируем systemd файлы мониторинга
+cp monitoring/ha-watchdog/ha-watchdog.service /etc/systemd/system/
+cp monitoring/ha-watchdog/ha-watchdog.timer /etc/systemd/system/
+cp monitoring/ha-failure-notifier/ha-failure-notifier.service /etc/systemd/system/
+cp monitoring/ha-failure-notifier/ha-failure-notifier.timer /etc/systemd/system/
+
+# Копируем systemd файлы системных сервисов
+cp system/nightly-reboot/nightly-reboot.service /etc/systemd/system/
+cp system/nightly-reboot/nightly-reboot.timer /etc/systemd/system/
+cp system/update-checker/update-checker.service /etc/systemd/system/
+cp system/update-checker/update-checker.timer /etc/systemd/system/
 
 # Создаем скрипт для логротации
 cat > /etc/logrotate.d/ha-monitoring << 'EOF'
@@ -78,8 +82,9 @@ systemctl enable nightly-reboot.timer
 read -p "Установить ежедневную проверку обновлений? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    # Создаем systemd файлы для update-checker
-    cat > /etc/systemd/system/update-checker.service << 'EOF'
+    # Создаем systemd файлы для update-checker (если они не скопированы из папки)
+    if [[ ! -f /etc/systemd/system/update-checker.service ]]; then
+        cat > /etc/systemd/system/update-checker.service << 'EOF'
 [Unit]
 Description=System Update Checker
 Documentation=man:systemd.service(5)
@@ -97,8 +102,10 @@ ConditionLoadAverage=<3.0
 [Install]
 WantedBy=multi-user.target
 EOF
+    fi
 
-    cat > /etc/systemd/system/update-checker.timer << 'EOF'
+    if [[ ! -f /etc/systemd/system/update-checker.timer ]]; then
+        cat > /etc/systemd/system/update-checker.timer << 'EOF'
 [Unit]
 Description=Schedule system update check during work hours on weekdays
 Documentation=man:systemd.timer(5)
@@ -113,9 +120,42 @@ RandomizedDelaySec=30min
 [Install]
 WantedBy=timers.target
 EOF
+    fi
 
+    systemctl daemon-reload
     systemctl enable update-checker.timer
     echo "✅ Update checker установлен"
+fi
+
+# Устанавливаем Tailscale если нужен
+read -p "Установить и настроить Tailscale VPN? (y/n): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "🔧 Установка Tailscale..."
+    
+    # Установка Tailscale
+    if ! command -v tailscale >/dev/null 2>&1; then
+        curl -fsSL https://tailscale.com/install.sh | sh
+    fi
+    
+    # Остановка сервисов
+    systemctl stop tailscaled tailscale-serve-ha tailscale-funnel-ha 2>/dev/null || true
+    
+    # Копирование конфигурации и сервисов
+    cp tailscale/tailscaled/tailscaled.service /etc/systemd/system/
+    cp tailscale/tailscale-serve-ha/tailscale-serve-ha.service /etc/systemd/system/
+    cp tailscale/tailscale-funnel-ha/tailscale-funnel-ha.service /etc/systemd/system/
+    
+    if [[ -f tailscale/tailscaled/tailscaled.default ]]; then
+        cp tailscale/tailscaled/tailscaled.default /etc/default/tailscaled
+    fi
+    
+    # Активация сервисов
+    systemctl daemon-reload
+    systemctl enable --now tailscaled tailscale-serve-ha tailscale-funnel-ha
+    
+    echo "✅ Tailscale установлен"
+    echo "🔑 Для авторизации выполните: tailscale up --hostname=rpi3-$(date +%Y%m%d)"
 fi
 
 # Создаем скрипт для управления
@@ -128,28 +168,43 @@ case "$1" in
         systemctl start ha-failure-notifier.timer
         systemctl start nightly-reboot.timer
         [[ -f /etc/systemd/system/update-checker.timer ]] && systemctl start update-checker.timer
-        echo "✅ Мониторинг запущен"
+        [[ -f /etc/systemd/system/tailscaled.service ]] && systemctl start tailscaled
+        [[ -f /etc/systemd/system/tailscale-serve-ha.service ]] && systemctl start tailscale-serve-ha
+        [[ -f /etc/systemd/system/tailscale-funnel-ha.service ]] && systemctl start tailscale-funnel-ha
+        echo "✅ Все сервисы запущены"
         ;;
     stop)
         systemctl stop ha-watchdog.timer
         systemctl stop ha-failure-notifier.timer
         systemctl stop nightly-reboot.timer
         [[ -f /etc/systemd/system/update-checker.timer ]] && systemctl stop update-checker.timer
-        echo "⏹️ Мониторинг остановлен"
+        [[ -f /etc/systemd/system/tailscaled.service ]] && systemctl stop tailscaled
+        [[ -f /etc/systemd/system/tailscale-serve-ha.service ]] && systemctl stop tailscale-serve-ha
+        [[ -f /etc/systemd/system/tailscale-funnel-ha.service ]] && systemctl stop tailscale-funnel-ha
+        echo "⏹️ Все сервисы остановлены"
         ;;
     restart)
         systemctl restart ha-watchdog.timer
         systemctl restart ha-failure-notifier.timer
         systemctl restart nightly-reboot.timer
         [[ -f /etc/systemd/system/update-checker.timer ]] && systemctl restart update-checker.timer
-        echo "🔄 Мониторинг перезапущен"
+        [[ -f /etc/systemd/system/tailscaled.service ]] && systemctl restart tailscaled
+        [[ -f /etc/systemd/system/tailscale-serve-ha.service ]] && systemctl restart tailscale-serve-ha
+        [[ -f /etc/systemd/system/tailscale-funnel-ha.service ]] && systemctl restart tailscale-funnel-ha
+        echo "🔄 Все сервисы перезапущены"
         ;;
     status)
-        echo "📊 Статус мониторинга:"
+        echo "📊 Статус сервисов:"
+        echo "--- Мониторинг ---"
         systemctl status ha-watchdog.timer --no-pager -l
         systemctl status ha-failure-notifier.timer --no-pager -l
+        echo "--- Система ---"
         systemctl status nightly-reboot.timer --no-pager -l
         [[ -f /etc/systemd/system/update-checker.timer ]] && systemctl status update-checker.timer --no-pager -l
+        echo "--- Tailscale ---"
+        [[ -f /etc/systemd/system/tailscaled.service ]] && systemctl status tailscaled --no-pager -l
+        [[ -f /etc/systemd/system/tailscale-serve-ha.service ]] && systemctl status tailscale-serve-ha --no-pager -l
+        [[ -f /etc/systemd/system/tailscale-funnel-ha.service ]] && systemctl status tailscale-funnel-ha --no-pager -l
         ;;
     logs)
         echo "📋 Логи watchdog:"
@@ -176,14 +231,34 @@ case "$1" in
             echo "❌ Telegram не настроен в /etc/ha-watchdog/config"
         fi
         ;;
+    tailscale-status)
+        if command -v tailscale >/dev/null 2>&1; then
+            echo "🔗 Статус Tailscale:"
+            tailscale status
+        else
+            echo "❌ Tailscale не установлен"
+        fi
+        ;;
+    diagnostic)
+        if [[ -f /usr/local/bin/system-diagnostic.sh ]]; then
+            /usr/local/bin/system-diagnostic.sh
+        else
+            echo "❌ Скрипт диагностики не найден"
+        fi
+        ;;
     *)
-        echo "Использование: $0 {start|stop|restart|status|logs|test-telegram}"
+        echo "Использование: $0 {start|stop|restart|status|logs|test-telegram|tailscale-status|diagnostic}"
         exit 1
         ;;
 esac
 EOF
 
 chmod +x /usr/local/bin/ha-monitoring-control
+
+# Устанавливаем скрипт диагностики
+echo "🔍 Установка скрипта диагностики..."
+cp system-diagnostic.sh /usr/local/bin/system-diagnostic.sh
+chmod +x /usr/local/bin/system-diagnostic.sh
 
 echo ""
 echo "✅ Установка завершена!"
@@ -196,7 +271,10 @@ echo "4. Проверьте статус: ha-monitoring-control status"
 echo "5. Протестируйте Telegram: ha-monitoring-control test-telegram"
 echo ""
 echo "🔧 Команды управления:"
-echo "   ha-monitoring-control {start|stop|restart|status|logs|test-telegram}"
+echo "   ha-monitoring-control {start|stop|restart|status|logs|test-telegram|tailscale-status|diagnostic}"
+echo ""
+echo "🔍 Диагностика системы:"
+echo "   system-diagnostic.sh    - полная диагностика системы"
 echo ""
 echo "📍 Файлы логов:"
 echo "   /var/log/ha-watchdog.log    - лог проверок"

@@ -345,6 +345,96 @@ check_monitoring() {
     echo "" | tee -a "$REPORT_FILE"
 }
 
+check_tailscale() {
+    log_section "🔗 TAILSCALE VPN"
+    
+    if ! command -v tailscale >/dev/null 2>&1; then
+        log_check "INFO" "Tailscale: Not installed"
+        echo "" | tee -a "$REPORT_FILE"
+        return
+    fi
+    
+    log_check "INFO" "Tailscale Version: $(tailscale version | head -1)"
+    
+    # Tailscale daemon status
+    if systemctl is-active tailscaled >/dev/null 2>&1; then
+        log_check "OK" "Tailscaled Daemon: Running"
+    else
+        log_check "ERROR" "Tailscaled Daemon: Not running"
+        echo "" | tee -a "$REPORT_FILE"
+        return
+    fi
+    
+    # Tailscale status
+    local ts_status=$(tailscale status --json 2>/dev/null)
+    if [[ $? -eq 0 ]]; then
+        local backend_state=$(echo "$ts_status" | jq -r '.BackendState' 2>/dev/null)
+        case "$backend_state" in
+            "Running")
+                log_check "OK" "Tailscale Status: Connected"
+                ;;
+            "NeedsLogin")
+                log_check "WARNING" "Tailscale Status: Needs authentication"
+                ;;
+            "NoState"|"Stopped")
+                log_check "ERROR" "Tailscale Status: Not connected"
+                ;;
+            *)
+                log_check "WARNING" "Tailscale Status: $backend_state"
+                ;;
+        esac
+        
+        # Get current node info
+        local self_info=$(echo "$ts_status" | jq -r '.Self // empty' 2>/dev/null)
+        if [[ -n "$self_info" ]] && [[ "$self_info" != "null" ]]; then
+            local hostname=$(echo "$self_info" | jq -r '.HostName // "unknown"' 2>/dev/null)
+            local tailscale_ip=$(echo "$self_info" | jq -r '.TailscaleIPs[0] // "unknown"' 2>/dev/null)
+            local online=$(echo "$self_info" | jq -r '.Online // false' 2>/dev/null)
+            
+            log_check "INFO" "Hostname: $hostname"
+            log_check "INFO" "Tailscale IP: $tailscale_ip"
+            
+            if [[ "$online" == "true" ]]; then
+                log_check "OK" "Node Status: Online"
+            else
+                log_check "WARNING" "Node Status: Offline"
+            fi
+        fi
+        
+        # Count peers
+        local peer_count=$(echo "$ts_status" | jq '.Peer | length' 2>/dev/null)
+        if [[ -n "$peer_count" ]] && [[ "$peer_count" != "null" ]]; then
+            log_check "INFO" "Connected Peers: $peer_count"
+        fi
+    else
+        log_check "WARNING" "Tailscale Status: Cannot retrieve status"
+    fi
+    
+    # Check Tailscale services
+    if systemctl is-active tailscale-serve-ha >/dev/null 2>&1; then
+        log_check "OK" "Tailscale Serve HA: Active"
+    else
+        log_check "INFO" "Tailscale Serve HA: Inactive"
+    fi
+    
+    if systemctl is-active tailscale-funnel-ha >/dev/null 2>&1; then
+        log_check "OK" "Tailscale Funnel HA: Active"
+    else
+        log_check "INFO" "Tailscale Funnel HA: Inactive"
+    fi
+    
+    # Check if Home Assistant is accessible via Tailscale
+    if [[ -n "$tailscale_ip" ]] && [[ "$tailscale_ip" != "unknown" ]]; then
+        if timeout 3 bash -c "</dev/tcp/$tailscale_ip/8123" 2>/dev/null; then
+            log_check "OK" "HA via Tailscale ($tailscale_ip:8123): Accessible"
+        else
+            log_check "WARNING" "HA via Tailscale ($tailscale_ip:8123): Not accessible"
+        fi
+    fi
+    
+    echo "" | tee -a "$REPORT_FILE"
+}
+
 check_security() {
     log_section "🔒 БЕЗОПАСНОСТЬ"
     
@@ -441,6 +531,7 @@ main() {
     check_docker
     check_services
     check_monitoring
+    check_tailscale
     check_security
     generate_summary
     
@@ -452,6 +543,10 @@ main() {
 # Проверка зависимостей
 if ! command -v bc >/dev/null 2>&1; then
     echo "⚠️  Внимание: утилита 'bc' не найдена. Некоторые проверки могут работать некорректно."
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "⚠️  Внимание: утилита 'jq' не найдена. Проверка Tailscale будет ограничена."
 fi
 
 main "$@"
