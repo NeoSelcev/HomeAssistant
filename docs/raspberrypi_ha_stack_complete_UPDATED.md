@@ -5,12 +5,12 @@
 ### Raspberry Pi 3B+ Setup
 - **OS**: Debian 12 (Bookworm), ARM64 architecture
 - **Hostname**: rpi3-20250711  
-- **SSH Access**: Port 22222, key-based authentication
+- **SSH Access**: Port 22, key-based authentication
 - **Installation**: Manual setup with full root access
 
 ### Network Configuration
 - **Local Network**: 192.168.1.0/24
-- **PI Address**: 192.168.1.100
+- **PI Address**: 192.168.1.21
 - **Router**: 192.168.1.1
 - **DNS**: 8.8.8.8, 1.1.1.1
 
@@ -51,14 +51,14 @@ services:
 ### Port Mapping
 - **8123**: Home Assistant Web UI
 - **1880**: Node-RED Flow Editor  
-- **22222**: SSH Management Port
+- **22**: SSH Management Port
 - **443/80**: HTTPS/HTTP (if exposed)
 
 ## Security Configuration
 
 ### SSH Hardening
 - Key-based authentication only
-- Custom port (22222)
+- Custom port (22)
 - Root login via keys
 - Fail2ban protection
 
@@ -366,4 +366,60 @@ zo+ocaIzCx+0/KFTMiZUAAAAHm5lb3NlbGNldkBMZW5vdm9QMTRzZ2VuMi1TbGF2YQECAw
 QFBgc=
 -----END OPENSSH PRIVATE KEY-----
 ```
+---
+
+## 🔗 Быстрые SSH подключения
+
+### Настройка ~/.ssh/config
+
+Для удобного подключения добавьте в файл `~/.ssh/config`:
+
+```bash
+# Raspberry Pi Home Assistant (Локальная сеть)
+Host rpi
+    HostName 192.168.1.21
+    Port 22
+    User root
+    IdentityFile ~/.ssh/raspberry_pi_key
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+
+# Raspberry Pi через VPN (Tailscale)
+Host rpi-vpn
+    HostName 100.103.54.125
+    Port 22
+    User root
+    IdentityFile ~/.ssh/raspberry_pi_key
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+```
+
+### Создание SSH ключа
+
+```bash
+# Создаем приватный ключ (уже есть выше в документе)
+# Устанавливаем правильные права доступа
+chmod 600 ~/.ssh/raspberry_pi_key
+```
+
+### Использование
+
+```bash
+# Подключение по локальной сети
+ssh rpi
+
+# Подключение через VPN (из любой точки мира)
+ssh rpi-vpn
+
+# Копирование файлов
+scp ./monitoring/install.sh rpi:/tmp/
+scp -r ./monitoring/ rpi:/srv/home/
+
+# Выполнение команд
+ssh rpi "docker ps"
+ssh rpi-vpn "systemctl status ha-watchdog"
+```
+
 ---

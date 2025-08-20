@@ -33,14 +33,16 @@
 
 ## Smart Home Hub Configuration
 
-### Raspberry Pi 3B+ Network Settings
+### Primary Node Configuration
+**Device**: Raspberry Pi 3B+
+- **OS**: Debian 12 (Bookworm) ARM64
+- **RAM**: 1GB LPDDR2 SDRAM
+- **IP Address**: 192.168.1.21 (static)
+- **Hostname**: rpi3-20250711
+- **Storage**: 32GB MicroSD Card (SanDisk Ultra)
 
-- **IP Address**: 192.168.1.100 (static)
-- **Network**: Main router subnet
-- **Services**:
-  - Home Assistant: Port 8123
-  - Node-RED: Port 1880
-  - SSH: Port 22222
+**Network Services**:
+  - SSH: Port 22
 
 ### Security & Access
 

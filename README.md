@@ -102,17 +102,44 @@ services:
 
 Add to your `~/.ssh/config`:
 ```
+# Raspberry Pi Home Assistant (Local Network)
 Host rpi
     HostName 192.168.1.21
     Port 22
     User root
-    IdentityFile ~/.ssh/id_ed25519
+    IdentityFile ~/.ssh/raspberry_pi_key
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
 
+# Raspberry Pi через VPN (Tailscale)
 Host rpi-vpn
     HostName 100.103.54.125
     Port 22
     User root
-    IdentityFile ~/.ssh/id_ed25519
+    IdentityFile ~/.ssh/raspberry_pi_key
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+```
+
+### **Setup SSH Key**
+First, create the SSH key from project documentation:
+```bash
+# Create the private key
+cat > ~/.ssh/raspberry_pi_key << 'EOF'
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACBzSjnVXBPRIV7IxophtNDfOs6PqHGiMwsftPyhUzImVAAAAKjNropLza6K
+SwAAAAtzc2gtZWQyNTUxOQAAACBzSjnVXBPRIV7IxophtNDfOs6PqHGiMwsftPyhUzImVA
+AAAEBwxp6MW7O9+NzY2hv/rg6blSU5BRwUkJPIXLrmr4Jwn3NKOdVcE9EhXsjGimG00N86
+zo+ocaIzCx+0/KFTMiZUAAAAHm5lb3NlbGNldkBMZW5vdm9QMTRzZ2VuMi1TbGF2YQECAw
+QFBgc=
+-----END OPENSSH PRIVATE KEY-----
+EOF
+
+# Set correct permissions
+chmod 600 ~/.ssh/raspberry_pi_key
 ```
 
 ### **Connection Commands**

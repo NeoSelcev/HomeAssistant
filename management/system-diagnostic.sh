@@ -266,10 +266,10 @@ check_services() {
     fi
     
     # SSH
-    if timeout 3 bash -c '</dev/tcp/localhost/22222' 2>/dev/null; then
-        log_check "OK" "SSH (22222): Accessible"
+    if timeout 3 bash -c '</dev/tcp/localhost/22' 2>/dev/null; then
+        log_check "OK" "SSH (22): Accessible"
     else
-        log_check "WARNING" "SSH (22222): Not accessible"
+        log_check "WARNING" "SSH (22): Not accessible"
     fi
     
     echo "" | tee -a "$REPORT_FILE"
