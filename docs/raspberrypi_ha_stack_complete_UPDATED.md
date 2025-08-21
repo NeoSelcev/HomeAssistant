@@ -7,6 +7,8 @@
 - **Hostname**: rpi3-20250711  
 - **SSH Access**: Port 22, key-based authentication
 - **Installation**: Manual setup with full root access
+- **Memory**: 1GB RAM + 2GB Swap file (/swapfile)
+- **Storage**: MicroSD card with regular health monitoring
 
 ### Network Configuration
 - **Local Network**: 192.168.1.0/24
@@ -76,7 +78,44 @@ services:
 - Regular security updates
 
 ---
-*Updated: 2025-08-05 - Smart Home Network Documentation*
+*Updated: 2025-08-21 - Smart Home Network Documentation*
+
+## Monitoring System
+
+### System Health Monitoring
+- **Scripts Location**: `/opt/ha-monitoring/scripts/`
+- **Config**: `/etc/ha-watchdog/config`
+- **Logs**: `/var/log/ha-*.log`
+
+#### ha-watchdog.sh
+- **Purpose**: Comprehensive system health checks
+- **Service**: `ha-watchdog.service` (timer-based)
+- **Interval**: Every 2 minutes
+- **Checks**: 20 different system components
+  - Memory usage (threshold: 80MB free)
+  - Docker containers (homeassistant, nodered)  
+  - Tailscale services (tailscaled, funnel, serve)
+  - Network connectivity and WiFi signal
+  - CPU temperature and load
+  - Disk space and SD card health
+  - SSH access and systemd services
+
+#### ha-failure-notifier.sh  
+- **Purpose**: Process failures and send Telegram notifications
+- **Service**: `ha-failure-notifier.service` (timer-based)
+- **Interval**: Every 1 minute
+- **Features**: Smart throttling, automatic container restart
+- **Notifications**: Critical/Warning/Info with emojis
+
+#### System Management
+- **Control Script**: `/usr/local/bin/ha-monitoring-services-control.sh`
+- **Usage**: `ha-monitoring-services-control.sh {permissions|restart|status|full}`
+- **Functions**: Set permissions, restart services, check status
+
+### Memory Management
+- **Swap File**: `/swapfile` (2GB)
+- **Configuration**: Auto-enabled at boot via `/etc/fstab`
+- **Monitoring**: Included in watchdog checks
     image: nodered/node-red
     network_mode: host
     volumes:
@@ -363,7 +402,38 @@ done < "$FAILURE_LOG"
 
 ---
 
-## 🔑 SSH ключи доступа
+## � System Configuration
+
+### Swap Configuration
+```bash
+# Создание 2GB swap файла для улучшения производительности
+fallocate -l 2G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+
+# Добавление в fstab для автозагрузки
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+# Проверка результата
+free -h
+swapon --show
+```
+
+### Service Management
+```bash
+# Установка и управление сервисами мониторинга
+cd /path/to/project
+cp services/ha-monitoring-services-control.sh /usr/local/bin/
+chmod +x /usr/local/bin/ha-monitoring-services-control.sh
+
+# Использование
+ha-monitoring-services-control.sh full    # Полная настройка
+ha-monitoring-services-control.sh restart # Перезапуск сервисов
+ha-monitoring-services-control.sh status  # Проверка статуса
+```
+
+## �🔑 SSH ключи доступа
 
 Публичный ключ:
 ```

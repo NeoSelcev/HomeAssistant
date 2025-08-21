@@ -153,8 +153,14 @@ process_failure() {
         *"IFACE_DOWN:"*)
             local iface=$(echo "$line" | sed 's/.*IFACE_DOWN://' | cut -d' ' -f1)
             event_type="IFACE_DOWN_$iface"
-            restart_interface "$iface"
-            return
+            # Не перезапускаем интерфейс автоматически - создает много шума
+            if [[ "$iface" == "wlan0" ]]; then
+                log_action "IGNORED: $iface down (auto-restart disabled)"
+                return
+            else
+                restart_interface "$iface"
+                return
+            fi
             ;;
         *"LOW_MEMORY:"*)
             local mem=$(echo "$line" | sed 's/.*LOW_MEMORY://' | cut -d' ' -f1)
@@ -162,7 +168,7 @@ process_failure() {
             message="Мало свободной памяти: $mem"
             priority="critical"
             should_throttle=true
-            throttle_minutes=30
+            throttle_minutes=60
             ;;
         *"LOW_DISK:"*)
             local disk=$(echo "$line" | sed 's/.*LOW_DISK://' | cut -d' ' -f1)
@@ -203,10 +209,24 @@ process_failure() {
             should_throttle=true
             throttle_minutes=15
             ;;
-        *"TAILSCALE_"*)
-            event_type="TAILSCALE_ISSUE"
-            message="Проблема с Tailscale VPN"
+        *"TAILSCALE_DAEMON_DOWN"*)
+            event_type="TAILSCALE_DAEMON"
+            message="Tailscale демон не работает"
             priority="critical"
+            should_throttle=true
+            throttle_minutes=15
+            ;;
+        *"TAILSCALE_VPN_DOWN"*)
+            event_type="TAILSCALE_VPN"
+            message="Tailscale VPN подключение недоступно"
+            priority="critical"
+            should_throttle=true
+            throttle_minutes=15
+            ;;
+        *"TAILSCALE_FUNNEL_DOWN"*)
+            event_type="TAILSCALE_FUNNEL"
+            message="Tailscale Funnel сервис не работает"
+            priority="warning"
             should_throttle=true
             throttle_minutes=20
             ;;

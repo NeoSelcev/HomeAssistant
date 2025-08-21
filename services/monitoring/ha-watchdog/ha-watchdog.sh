@@ -11,7 +11,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
 else
     # Значения по умолчанию
     HOST="8.8.8.8"
-    MEM_THRESHOLD_MB=100
+    MEM_THRESHOLD_MB=80
     DISK_THRESHOLD_KB=500000
     TEMP_THRESHOLD=70
     HA_CONTAINER="homeassistant"
@@ -79,10 +79,11 @@ check_containers() {
 }
 
 check_network_interface() {
-    if ! ip link show "$IFACE" 2>/dev/null | grep -q "state UP"; then
-        log_failure "IFACE_DOWN:$IFACE"
-        return 1
-    fi
+    # Закомментировано - избыточные проверки WiFi создают много шума
+    # if ! ip link show "$IFACE" 2>/dev/null | grep -q "state UP"; then
+    #     log_failure "IFACE_DOWN:$IFACE"
+    #     return 1
+    # fi
     return 0
 }
 
@@ -230,9 +231,9 @@ check_log_sizes() {
 check_ntp_sync() {
     local failed=0
     
-    # Проверяем NTP синхронизацию
+    # Проверяем NTP синхронизацию (исправлено для systemd-timesyncd)
     if command -v timedatectl >/dev/null 2>&1; then
-        if ! timedatectl status | grep -q "NTP synchronized: yes"; then
+        if ! timedatectl status | grep -q "System clock synchronized: yes"; then
             log_failure "NTP_NOT_SYNCED"
             ((failed++))
         fi
@@ -369,7 +370,7 @@ main() {
     # Удаленный доступ
     check_ssh_access || ((total_failures++))
     check_tailscale_status || ((total_failures++))
-    check_public_access || ((total_failures++))
+    # check_public_access || ((total_failures++))  # Отключено: Tailscale Funnel не настроен
     
     # Здоровье системы
     check_sd_card_health || ((total_failures++))
@@ -383,7 +384,7 @@ main() {
     check_wifi_signal || ((total_failures++))
     
     if [[ $total_failures -eq 0 ]]; then
-        log "All 20 checks passed successfully"
+        log "All 19 checks passed successfully"  # Обновлено: отключена проверка public_access
     else
         log "Found $total_failures issue(s) across system components"
     fi

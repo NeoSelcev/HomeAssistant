@@ -350,7 +350,7 @@ echo "🐳 DOCKER:"
 if command -v docker >/dev/null 2>&1; then
     systemctl is-active docker >/dev/null 2>&1 && echo "  ✅ Docker активен" || echo "  ❌ Docker неактивен"
     
-    containers=("homeassistant" "nodered" "tailscale")
+    containers=("homeassistant" "nodered")
     for container in "\${containers[@]}"; do
         if docker inspect -f '{{.State.Running}}' "\$container" 2>/dev/null | grep -q true; then
             echo "  ✅ \$container работает"
