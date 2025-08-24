@@ -13,16 +13,111 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+# Проверяем установку Docker
+echo "🐳 Проверка Docker..."
+if ! command -v docker >/dev/null 2>&1; then
+    echo "📦 Установка Docker..."
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
+    usermod -aG docker $SUDO_USER 2>/dev/null || true
+    echo "✅ Docker установлен"
+else
+    echo "✅ Docker уже установлен"
+fi
+
+# Проверяем установку Docker Compose
+if ! command -v docker-compose >/dev/null 2>&1; then
+    echo "📦 Установка Docker Compose..."
+    apt update
+    apt install -y docker-compose
+    echo "✅ Docker Compose установлен"
+else
+    echo "✅ Docker Compose уже установлен"
+fi
+
+# Настройка ограничений Docker логирования
+echo "📝 Настройка ограничений Docker логирования..."
+DAEMON_JSON="/etc/docker/daemon.json"
+
+# Создаем резервную копию
+if [[ -f "$DAEMON_JSON" ]]; then
+    cp "$DAEMON_JSON" "$DAEMON_JSON.backup.$(date +%Y%m%d_%H%M%S)"
+    echo "💾 Резервная копия создана"
+fi
+
+# Создаем новую конфигурацию
+cat > "$DAEMON_JSON" << 'EOF'
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "7"
+  }
+}
+EOF
+
+echo "✅ Конфигурация Docker логирования установлена"
+echo "   └─ Лимит: 10MB × 7 файлов = 70MB на контейнер"
+
+# Создание Home Assistant директории и docker-compose
+echo "🏠 Настройка Home Assistant..."
+HA_DIR="/opt/homeassistant"
+mkdir -p "$HA_DIR"
+
+# Копируем docker-compose.yml если он есть в проекте
+if [[ -f "docker-compose.yml" ]]; then
+    cp docker-compose.yml "$HA_DIR/"
+    echo "✅ docker-compose.yml скопирован в $HA_DIR"
+else
+    # Создаем базовый docker-compose.yml
+    cat > "$HA_DIR/docker-compose.yml" << 'EOF'
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - ./homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "7"
+
+  nodered:
+    container_name: nodered
+    image: nodered/node-red:latest
+    ports:
+      - "1880:1880"
+    volumes:
+      - ./nodered:/data
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Moscow
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "7"
+EOF
+    echo "✅ Базовый docker-compose.yml создан"
+fi
+
 # Создаем необходимые директории
 echo "📁 Создание директорий..."
 mkdir -p /etc/ha-watchdog
 mkdir -p /var/lib/ha-responder
 mkdir -p /usr/local/bin
+mkdir -p "$HA_DIR/homeassistant"
+mkdir -p "$HA_DIR/nodered"
 
 # Устанавливаем зависимости
 echo "📦 Установка зависимостей..."
 apt update
-apt install -y bc curl jq
+apt install -y bc curl jq wireless-tools dos2unix htop
 
 # Копируем скрипты
 echo "📋 Установка скриптов..."
@@ -41,6 +136,17 @@ if [[ ! -f /etc/ha-watchdog/config ]]; then
     echo "⚙️ Конфигурация скопирована в /etc/ha-watchdog/config"
     echo "📝 Не забудьте настроить Telegram токены!"
 fi
+
+# Перезапуск Docker для применения настроек логирования
+echo "🔄 Перезапуск Docker для применения настроек..."
+systemctl restart docker
+sleep 5
+
+# Запуск Home Assistant контейнеров
+echo "🏠 Запуск Home Assistant контейнеров..."
+cd "$HA_DIR"
+docker-compose up -d
+echo "✅ Home Assistant контейнеры запущены"
 
 # Создаем systemd сервисы
 echo "🔧 Создание systemd сервисов..."
@@ -263,7 +369,12 @@ chmod +x /usr/local/bin/system-diagnostic.sh
 echo ""
 echo "✅ Установка завершена!"
 echo ""
-echo "📝 Следующие шаги:"
+echo "� Docker состояние:"
+echo "   ├─ Docker Engine: Настроен с ограничениями логов (10MB×7)"
+echo "   ├─ Home Assistant: Запущен на порту 8123"
+echo "   └─ Node-RED: Запущен на порту 1880"
+echo ""
+echo "�📝 Следующие шаги:"
 echo "1. Отредактируйте /etc/ha-watchdog/config"
 echo "2. Добавьте токены Telegram бота"
 echo "3. Запустите мониторинг: ha-monitoring-control start"
@@ -272,6 +383,11 @@ echo "5. Протестируйте Telegram: ha-monitoring-control test-telegra
 echo ""
 echo "🔧 Команды управления:"
 echo "   ha-monitoring-control {start|stop|restart|status|logs|test-telegram|tailscale-status|diagnostic}"
+echo ""
+echo "🐳 Docker команды:"
+echo "   cd /opt/homeassistant && docker-compose ps     - статус контейнеров"
+echo "   cd /opt/homeassistant && docker-compose logs   - логи контейнеров"
+echo "   cd /opt/homeassistant && docker-compose restart - перезапуск контейнеров"
 echo ""
 echo "🔍 Диагностика системы:"
 echo "   system-diagnostic.sh    - полная диагностика системы"

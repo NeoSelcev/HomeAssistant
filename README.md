@@ -44,11 +44,30 @@ services:
     image: homeassistant/home-assistant:stable
     network_mode: host
     ports: 8123
+    logging:
+      max-size: "10m"
+      max-file: "7"
     
   nodered:
     image: nodered/node-red:latest
     ports: 1880
+    logging:
+      max-size: "10m" 
+      max-file: "7"
 ```
+
+### **Log Management Configuration**
+
+Docker logs are controlled through two levels:
+
+1. **Global settings** (`/etc/docker/daemon.json`):
+   - Default limits for all containers: 10MB per file, 7 archived files
+   - Provides safety net for new containers without explicit logging config
+
+2. **Container-specific** (`docker-compose.yml`):
+   - Individual logging settings per service
+   - Same limits applied: 10MB × 7 files = 70MB maximum per container
+   - Total Docker logs limited to ~140MB (HA + NodeRED)
 
 ## 🔧 Monitoring Services
 

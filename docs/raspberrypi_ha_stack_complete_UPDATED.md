@@ -22,16 +22,45 @@
 ```yaml
 services:
   homeassistant:
-    image: homeassistant/home-assistant:stable
+    image: ghcr.io/home-assistant/home-assistant:stable
     network_mode: host
     ports: 8123
     volumes: ./homeassistant:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "7"
     
   nodered:
     image: nodered/node-red:latest
     ports: 1880
     volumes: ./nodered:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "7"
 ```
+
+### Docker Logging Configuration
+**Global Settings** (`/etc/docker/daemon.json`):
+```json
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "7"
+  }
+}
+```
+
+**Log Management Strategy:**
+- **Per Container Limit**: 70MB maximum (10MB × 7 files)
+- **Total Docker Logs**: ~140MB maximum (HA + NodeRED)  
+- **Automatic Rotation**: When log file reaches 10MB
+- **Archive Policy**: Keep 7 historical log files
+- **Benefits**: Prevents disk space exhaustion, maintains debugging capability
 
 ### Tailscale VPN (Native Installation)
 - **Service**: Native systemd services (not containerized)

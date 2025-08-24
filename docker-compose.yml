@@ -8,6 +8,11 @@ services:
     restart: unless-stopped
     privileged: true
     network_mode: host
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "7"
 
   nodered:
     container_name: nodered
@@ -19,3 +24,8 @@ services:
     restart: unless-stopped
     environment:
       - TZ=Europe/Moscow
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "7"
