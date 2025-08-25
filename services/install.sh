@@ -16,7 +16,18 @@ fi
 # Проверяем установку Docker
 echo "🐳 Проверка Docker..."
 if ! command -v docker >/dev/null 2>&1; then
-    echo "📦 Установка Docker..."
+    ececho "✅ Установка завершена!"
+echo ""
+echo "� Docker состояние:"
+echo "   ├─ Docker Engine: Настроен с ограничениями логов (10MB×7)"
+echo "   ├─ Home Assistant: Запущен на порту 8123"
+echo "   └─ Node-RED: Запущен на порту 1880"
+echo ""
+echo "📋 Logrotate настроен:"
+echo "   ├─ HA мониторинг: агрессивная ротация (5-20MB лимиты)"
+echo "   ├─ Home Assistant: ротация при 50MB"
+echo "   ├─ Systemd journal: лимит 500MB (было ${JOURNAL_SIZE_BEFORE:-'неизвестно'})"
+echo "   └─ Автоматическая ротация: ежедневно в 2:00" Установка Docker..."
     curl -fsSL https://get.docker.com -o get-docker.sh
     sh get-docker.sh
     usermod -aG docker $SUDO_USER 2>/dev/null || true
@@ -163,19 +174,58 @@ cp system/nightly-reboot/nightly-reboot.timer /etc/systemd/system/
 cp system/update-checker/update-checker.service /etc/systemd/system/
 cp system/update-checker/update-checker.timer /etc/systemd/system/
 
-# Создаем скрипт для логротации
-cat > /etc/logrotate.d/ha-monitoring << 'EOF'
-/var/log/ha-*.log {
-    daily
-    rotate 30
-    compress
-    delaycompress
-    missingok
-    notifempty
-    copytruncate
-    maxsize 10M
-}
-EOF
+# Настройка расширенного логротейта
+echo "📝 Настройка расширенного logrotate..."
+
+# Создаем резервную копию существующих конфигураций logrotate
+mkdir -p /backup/logrotate-$(date +%Y%m%d)
+cp -r /etc/logrotate.d/* /backup/logrotate-$(date +%Y%m%d)/ 2>/dev/null || true
+
+# Устанавливаем конфигурацию для логов HA мониторинга
+cp logrotate/ha-monitoring /etc/logrotate.d/
+chmod 644 /etc/logrotate.d/ha-monitoring
+
+# Устанавливаем конфигурацию для логов Home Assistant
+cp logrotate/homeassistant /etc/logrotate.d/
+chmod 644 /etc/logrotate.d/homeassistant
+
+# Настраиваем systemd journal limits (текущий размер может быть >1GB)
+echo "📊 Настройка ограничений systemd journal..."
+cp /etc/systemd/journald.conf /etc/systemd/journald.conf.backup-$(date +%Y%m%d)
+cp logrotate/journald.conf /etc/systemd/journald.conf
+
+# Перезапускаем journald для применения настроек
+systemctl restart systemd-journald
+
+# Очищаем большие журналы
+echo "🧹 Очистка systemd журналов..."
+JOURNAL_SIZE_BEFORE=$(du -sh /var/log/journal 2>/dev/null | cut -f1 || echo "0")
+echo "   Размер до очистки: $JOURNAL_SIZE_BEFORE"
+journalctl --vacuum-size=500M
+JOURNAL_SIZE_AFTER=$(du -sh /var/log/journal 2>/dev/null | cut -f1 || echo "0")
+echo "   Размер после очистки: $JOURNAL_SIZE_AFTER"
+
+# Принудительно поворачиваем большие лог-файлы
+echo "🔄 Принудительная ротация больших логов..."
+if [ -f /var/log/ha-failure-notifier.log ]; then
+    NOTIFIER_SIZE=$(stat -c%s /var/log/ha-failure-notifier.log 2>/dev/null || echo "0")
+    if [ "$NOTIFIER_SIZE" -gt 5242880 ]; then  # 5MB
+        echo "   Поворачиваем ha-failure-notifier.log ($(($NOTIFIER_SIZE / 1024 / 1024))MB)"
+        logrotate -f /etc/logrotate.d/ha-monitoring
+    fi
+fi
+
+# Тестируем конфигурацию logrotate
+echo "✅ Тестирование конфигурации logrotate..."
+logrotate -d /etc/logrotate.d/ha-monitoring >/dev/null 2>&1 && echo "   ✅ HA monitoring: OK" || echo "   ❌ HA monitoring: ERROR"
+logrotate -d /etc/logrotate.d/homeassistant >/dev/null 2>&1 && echo "   ✅ Home Assistant: OK" || echo "   ❌ Home Assistant: ERROR"
+
+# Устанавливаем ежедневный cron для logrotate (если не существует)
+if ! crontab -l 2>/dev/null | grep -q logrotate; then
+    echo "⏰ Добавление logrotate в cron..."
+    (crontab -l 2>/dev/null; echo "0 2 * * * /usr/sbin/logrotate /etc/logrotate.conf") | crontab -
+    echo "   ✅ Logrotate будет запускаться ежедневно в 2:00"
+fi
 
 # Перезагружаем systemd и включаем сервисы
 echo "🔄 Настройка systemd..."
@@ -325,6 +375,28 @@ case "$1" in
         echo "📋 Логи reboot:"
         tail -10 /var/log/ha-reboot.log 2>/dev/null || echo "Лог файл не найден"
         ;;
+    log-sizes)
+        echo "📊 Размеры логов:"
+        echo "--- Логи HA мониторинга ---"
+        du -sh /var/log/ha-*.log 2>/dev/null | sort -hr || echo "Логи не найдены"
+        echo "--- Home Assistant логи ---"
+        du -sh /srv/homeassistant/*.log 2>/dev/null || echo "Логи не найдены"
+        echo "--- Systemd journal ---"
+        journalctl --disk-usage 2>/dev/null || echo "Journal недоступен"
+        ;;
+    rotate-logs)
+        echo "🔄 Принудительная ротация логов..."
+        logrotate -f /etc/logrotate.d/ha-monitoring
+        logrotate -f /etc/logrotate.d/homeassistant
+        echo "✅ Ротация завершена"
+        ;;
+    clean-journal)
+        echo "🧹 Очистка systemd journal..."
+        BEFORE=$(journalctl --disk-usage 2>/dev/null | grep -o '[0-9.]*[KMGT]' || echo "неизвестно")
+        journalctl --vacuum-size=500M
+        AFTER=$(journalctl --disk-usage 2>/dev/null | grep -o '[0-9.]*[KMGT]' || echo "неизвестно")
+        echo "Размер до: $BEFORE, после: $AFTER"
+        ;;
     test-telegram)
         source /etc/ha-watchdog/config
         if [[ -n "$TELEGRAM_BOT_TOKEN" ]] && [[ -n "$TELEGRAM_CHAT_ID" ]]; then
@@ -353,7 +425,12 @@ case "$1" in
         fi
         ;;
     *)
-        echo "Использование: $0 {start|stop|restart|status|logs|test-telegram|tailscale-status|diagnostic}"
+        echo "Использование: $0 {start|stop|restart|status|logs|log-sizes|rotate-logs|clean-journal|test-telegram|tailscale-status|diagnostic}"
+        echo ""
+        echo "Команды управления логами:"
+        echo "  log-sizes     - показать размеры всех логов"
+        echo "  rotate-logs   - принудительная ротация логов"
+        echo "  clean-journal - очистка systemd journal до 500MB"
         exit 1
         ;;
 esac
@@ -383,6 +460,7 @@ echo "5. Протестируйте Telegram: ha-monitoring-control test-telegra
 echo ""
 echo "🔧 Команды управления:"
 echo "   ha-monitoring-control {start|stop|restart|status|logs|test-telegram|tailscale-status|diagnostic}"
+echo "   ha-monitoring-control {log-sizes|rotate-logs|clean-journal} - управление логами"
 echo ""
 echo "🐳 Docker команды:"
 echo "   cd /opt/homeassistant && docker-compose ps     - статус контейнеров"

@@ -1,0 +1,36 @@
+# Logrotate configuration for Home Assistant logs
+# Place this file in /etc/logrotate.d/homeassistant
+
+# Home Assistant main log
+/srv/homeassistant/home-assistant.log {
+    # Rotate when file reaches 50MB (Home Assistant can generate large logs)
+    size 50M
+    
+    # Keep 7 rotated files (one week worth)
+    rotate 7
+    
+    # Compress rotated files
+    compress
+    delaycompress
+    
+    # Don't rotate if empty
+    notifempty
+    
+    # Don't error if missing
+    missingok
+    
+    # Create new file with correct ownership
+    # Note: Change 'root' to actual HA user if different
+    create 644 root root
+    
+    # Copy and truncate instead of moving (HA keeps file handle open)
+    copytruncate
+    
+    # Rotate daily if size limit not reached
+    daily
+    
+    # Alternative: Use postrotate to restart HA if needed
+    # postrotate
+    #     /usr/bin/docker restart homeassistant > /dev/null 2>&1 || true
+    # endscript
+}

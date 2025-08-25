@@ -420,24 +420,63 @@ WantedBy=multi-user.target
 
 ### 🧹 Logrotate для логов
 
-Создай файл `/etc/logrotate.d/ha-watchdog`:
+**Автоматическая настройка:** Logrotate конфигурируется автоматически при установке через `install.sh`
 
-```ini
-/var/log/ha-*.log {
-    rotate 5
-    size 1M
-    missingok
-    notifempty
-    compress
-    delaycompress
-    copytruncate
-}
+**Конфигурации установлены:**
+
+- `/etc/logrotate.d/ha-monitoring` - для логов системы мониторинга
+- `/etc/logrotate.d/homeassistant` - для логов Home Assistant  
+- `/etc/systemd/journald.conf` - ограничения systemd journal (500MB)
+
+**Параметры ротации:**
+
+```bash
+# Высокочастотные логи (каждые 2-5 минут)
+/var/log/ha-watchdog.log, /var/log/ha-failure-notifier.log
+├─ Размер: 5MB → ротация  
+├─ Архив: 10 файлов (50MB общий лимит)
+├─ Частота: ежедневно
+└─ Сжатие: да
+
+# Средние логи  
+/var/log/ha-failures.log, /var/log/ha-reboot.log
+├─ Размер: 10MB → ротация
+├─ Архив: 5 файлов  
+└─ Частота: еженедельно
+
+# Home Assistant
+/srv/homeassistant/home-assistant.log
+├─ Размер: 50MB → ротация
+├─ Архив: 7 файлов
+├─ Метод: copytruncate (безопасно для HA)
+└─ Частота: ежедневно
 ```
 
-Добавь в `cron`:
-```sh
-echo '0 0 * * * root /usr/sbin/logrotate /etc/logrotate.conf' >> /etc/crontab
+**Управление через ha-monitoring-control:**
+
+```bash
+ha-monitoring-control log-sizes      # размеры всех логов
+ha-monitoring-control rotate-logs    # принудительная ротация  
+ha-monitoring-control clean-journal  # очистка systemd journal
 ```
+
+**Автоматическая ротация - systemd timer:**
+
+```bash
+# Проверка статуса logrotate
+systemctl status logrotate.timer
+● logrotate.timer - Daily rotation of log files
+  Active: active (waiting)
+  Trigger: ежедневно в 00:00 UTC (полночь)
+  
+# Следующий запуск
+systemctl list-timers logrotate.timer
+```
+
+- **Расписание**: Ежедневно в 00:00 (полночь) через systemd timer
+- **Метод**: `logrotate.timer` → `logrotate.service` (современная замена cron)
+- **Настройки**: `/lib/systemd/system/logrotate.timer` (OnCalendar=daily)
+- **Автозапуск**: включен при загрузке системы
 
 ---
 

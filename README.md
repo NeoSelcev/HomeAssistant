@@ -58,16 +58,30 @@ services:
 
 ### **Log Management Configuration**
 
-Docker logs are controlled through two levels:
+**Multi-level log management system:**
 
-1. **Global settings** (`/etc/docker/daemon.json`):
-   - Default limits for all containers: 10MB per file, 7 archived files
-   - Provides safety net for new containers without explicit logging config
+1. **Docker logs** (`/etc/docker/daemon.json`):
+   - Global limits: 10MB per file, 7 archived files per container
+   - Total Docker logs: ~140MB (HA + NodeRED)
 
-2. **Container-specific** (`docker-compose.yml`):
-   - Individual logging settings per service
-   - Same limits applied: 10MB × 7 files = 70MB maximum per container
-   - Total Docker logs limited to ~140MB (HA + NodeRED)
+2. **Application logs** (logrotate):
+   - HA monitoring logs: 5-20MB rotation limits with 10-3 file retention
+   - Home Assistant logs: 50MB rotation with 7 day retention
+   - Automated rotation: daily at 00:00 UTC via systemd timer
+
+3. **System logs** (systemd journal):
+   - Limited to 500MB total (down from potential 1.5GB+)
+   - 30-day retention with compression
+
+**Log management commands:**
+
+```bash
+ha-monitoring-control log-sizes      # Check all log sizes
+ha-monitoring-control rotate-logs    # Force log rotation  
+ha-monitoring-control clean-journal  # Clean systemd journal
+```
+
+**Automatic rotation:** `logrotate.timer` runs daily at midnight (systemd, not cron)
 
 ## 🔧 Monitoring Services
 
