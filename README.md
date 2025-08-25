@@ -82,7 +82,10 @@ Docker logs are controlled through two levels:
 
 ### **Additional Components Deployed:**
 - **Nightly Reboot Service**: ✅ Scheduled maintenance reboot at 3:30 AM
+  - **Security Fix**: Removed `Persistent=true` to prevent reboot loops on missed schedules
+  - **Enhanced Logging**: Detailed system metrics and Telegram notifications
 - **Update Checker Service**: ✅ Weekday update analysis at 9:00 AM (±30min randomization)
+  - **Added**: "No updates available" Telegram notifications for peace of mind
 - **Required System Packages**: ✅ bc, wireless-tools, dos2unix, curl installed
 - **Complete Service Suite**: ✅ 4 monitoring services with proper dependencies
 
@@ -409,10 +412,11 @@ sudo ./restore-tailscale.sh
 ## 🔔 Telegram уведомления
 
 Система отправляет уведомления с эмодзи приоритетами:
-- � **КРИТИЧНО**: Высокая температура (>70°C), недоступность Home Assistant
+- 🔴 **КРИТИЧНО**: Высокая температура (>70°C), недоступность Home Assistant
 - 🟠 **ВАЖНО**: Упавшие Docker контейнеры, проблемы сети
 - 🟡 **ПРЕДУПРЕЖДЕНИЕ**: Высокая загрузка системы, медленная сеть
 - 🟢 **ИНФОРМАЦИЯ**: Восстановление сервисов, успешные перезапуски
+- 🌙 **НОЧНЫЕ ОТЧЕТЫ**: Ежедневные отчеты о состоянии системы и обновлениях
 
 ## 🌐 Сетевая инфраструктура
 

@@ -198,6 +198,25 @@ if [ "$PACKAGES_NEED_UPDATE" = true ] || [ "$DOCKER_NEEDS_UPDATE" = true ] || [ 
 else
     log_message "Update check completed - No updates available"
     echo "✅ SUMMARY: No updates available" >> "$REPORT_FILE"
+    
+    # Send "no updates" notification
+    NO_UPDATES_MSG="✅ <b>System Status: Up to Date</b>
+🏠 Host: $(hostname)
+📅 Date: $(date '+%Y-%m-%d %H:%M')
+
+📦 <b>All components current:</b>
+✅ Packages: No updates available
+✅ Docker: Images up to date
+✅ Kernel: Current version
+
+📊 <b>System Health:</b>
+⏱️ Uptime: $(uptime -p)
+💾 Memory: $(free -h | awk 'NR==2{printf "%s/%s", $3,$2}')
+💿 Disk: $(df -h / | awk 'NR==2{print $3"/"$2}')
+
+🛡️ System monitoring active and healthy"
+
+    send_telegram "$NO_UPDATES_MSG"
 fi
 
 echo "Report saved to: $REPORT_FILE" >> "$REPORT_FILE"

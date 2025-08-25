@@ -15,7 +15,7 @@ fi
 
 # Function to log messages
 log_message() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): $1" >> "$LOG_FILE"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [NIGHTLY-REBOOT] $1" >> "$LOG_FILE"
 }
 
 # Function to send Telegram notification
@@ -29,8 +29,53 @@ send_telegram() {
     fi
 }
 
+# Check if system has been running for at least 10 minutes to prevent boot loops
+UPTIME_SECONDS=$(awk '{print int($1)}' /proc/uptime)
+MIN_UPTIME=600  # 10 minutes
+
+if [ $UPTIME_SECONDS -lt $MIN_UPTIME ]; then
+    log_message "========== NIGHTLY REBOOT SCRIPT - INSUFFICIENT UPTIME =========="
+    log_message "System uptime: ${UPTIME_SECONDS}s, Required: ${MIN_UPTIME}s"
+    log_message "Script will not reboot system that just booted"
+    
+    UPTIME_MSG="⚠️ <b>Nightly Reboot - Boot Loop Protection</b>
+🕐 Time: $(date '+%Y-%m-%d %H:%M:%S %Z')
+⏱️ Uptime: $(uptime -p)
+⚠️ System uptime too low (${UPTIME_SECONDS}s < ${MIN_UPTIME}s)
+❌ Reboot cancelled - boot loop protection"
+    
+    send_telegram "$UPTIME_MSG"
+    log_message "Boot loop protection notification sent. Exiting without reboot."
+    exit 0
+fi
+
+# Check if we're running at the correct time (03:30 ± 5 minutes)
+CURRENT_HOUR=$(date +%H)
+CURRENT_MINUTE=$(date +%M)
+CURRENT_TIME_MINUTES=$((CURRENT_HOUR * 60 + CURRENT_MINUTE))
+TARGET_TIME_MINUTES=$((3 * 60 + 30))  # 03:30 = 210 minutes
+TIME_DIFF=$((CURRENT_TIME_MINUTES - TARGET_TIME_MINUTES))
+
+# Allow ±5 minutes window (205-215 minutes from midnight)
+if [ $TIME_DIFF -lt -5 ] || [ $TIME_DIFF -gt 5 ]; then
+    log_message "========== NIGHTLY REBOOT SCRIPT CALLED AT WRONG TIME =========="
+    log_message "Current time: $(date '+%H:%M'), Expected: 03:30 (±5 min)"
+    log_message "Script will not perform reboot outside scheduled window"
+    
+    WRONG_TIME_MSG="⚠️ <b>Nightly Reboot - Wrong Time</b>
+🕐 Current: $(date '+%Y-%m-%d %H:%M:%S %Z')
+⏰ Expected: 03:30 (±5 minutes)
+❌ Reboot cancelled - not in scheduled window"
+    
+    send_telegram "$WRONG_TIME_MSG"
+    log_message "Wrong time notification sent. Exiting without reboot."
+    exit 0
+fi
+
 # Pre-reboot checks and notification
-log_message "Starting nightly reboot sequence"
+log_message "========== NIGHTLY REBOOT SEQUENCE STARTED =========="
+log_message "System: $(hostname), Time: $(date)"
+log_message "Starting nightly reboot sequence - time check passed"
 
 # Check system health before reboot
 UPTIME=$(uptime -p)
@@ -50,10 +95,12 @@ REBOOT_MSG="🔄 <b>Scheduled Reboot</b>
 # Send notification
 send_telegram "$REBOOT_MSG"
 log_message "Reboot notification sent. Uptime: $UPTIME, Load: $LOAD"
+log_message "System metrics - Memory: $MEMORY_USAGE, Disk: $DISK_USAGE"
 
 # Wait 30 seconds for notification to be sent
 sleep 30
 
 # Perform reboot
-log_message "Initiating system reboot"
+log_message "Initiating system reboot - END OF LOG BEFORE RESTART"
+log_message "========================================================="
 /sbin/shutdown -r now

@@ -69,10 +69,51 @@ services:
 - **Public HTTPS**: https://rpi3-20250711.tail586076.ts.net/
 - **Services**: tailscaled, tailscale-serve-ha, tailscale-funnel-ha
 
-### Service Management
-- **Working Directory**: `/srv/home`
-- **Auto-start**: systemd service `home-stack.service`
-- **Management**: `docker compose up/down`
+## Monitoring & Management Services
+
+### Health Monitoring Stack (Systemd Timers)
+```bash
+# Active monitoring services with scheduled execution
+ha-watchdog.timer         # Every 2 minutes - 20-point system health
+ha-failure-notifier.timer # Every 5 minutes - Telegram alerts & recovery  
+nightly-reboot.timer      # Daily 03:30 - Maintenance reboot with health report
+update-checker.timer      # Weekdays 09:00 ±30min - Update analysis
+```
+
+**⚠️ Important Timer Configuration:**
+- `nightly-reboot.timer` **does NOT** use `Persistent=true` to prevent reboot loops
+- `WakeSystem=false` prevents timer from waking sleeping system
+- **Triple Protection System:**
+  1. **Timer Level**: No persistent catch-up runs after system downtime
+  2. **Time Validation**: Script only runs between 03:25-03:35 (±5 min window)
+  3. **Boot Loop Protection**: Minimum 10 minutes system uptime required
+- If system misses 03:30 reboot (maintenance/downtime), it will skip until next day
+- All protection violations send Telegram notifications for monitoring
+
+### Service Logging Configuration
+```
+/var/log/ha-watchdog.log         # System health checks (every 2min)
+/var/log/ha-failure-notifier.log # Alert processing & recovery actions
+/var/log/ha-failures.log        # Failure events log (processed by notifier)
+/var/log/ha-reboot.log   # Nightly maintenance reports
+/var/log/ha-update-checker.log   # System update analysis
+/var/log/ha-services-control.log # Service management operations
+/var/log/ha-debug.log           # Debug information
+```
+
+### Telegram Integration
+**Notification Categories:**
+- 🔴 Critical: System failures, high temperature (>70°C)
+- 🟠 Important: Container failures, network issues  
+- 🟡 Warning: High system load, slow network
+- 🟢 Info: Service recovery, successful restarts
+- 🌙 Nightly: Daily system health reports with update status
+
+**Features:**
+- Smart throttling prevents notification spam
+- Rich HTML formatting with system metrics
+- Automatic update checking and reporting
+- Pre-reboot health summaries
 
 ## Network Topology
 

@@ -5,8 +5,10 @@ Requires=nightly-reboot.service
 
 [Timer]
 OnCalendar=*-*-* 03:30:00
-Persistent=true
 AccuracySec=1min
+WakeSystem=false
+# CRITICAL: No Persistent=true - prevents catch-up runs after system downtime
+# WakeSystem=false ensures timer won't wake sleeping system
 
 [Install]
 WantedBy=timers.target
