@@ -23,10 +23,18 @@ log_message() {
 send_telegram() {
     local message="$1"
     if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-        curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+        log_message "Sending Telegram notification..."
+        local response=$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
              -d "chat_id=$TELEGRAM_CHAT_ID" \
              -d "text=$message" \
-             -d "parse_mode=HTML" > /dev/null 2>&1
+             -d "parse_mode=HTML" 2>&1)
+        if echo "$response" | grep -q '"ok":true'; then
+            log_message "Telegram notification sent successfully"
+        else
+            log_message "Telegram notification failed: $response"
+        fi
+    else
+        log_message "Telegram credentials not configured"
     fi
 }
 
