@@ -5,8 +5,8 @@
 /var/log/ha-watchdog.log
 /var/log/ha-failures.log
 /var/log/ha-failure-notifier.log {
-    # Rotate when file reaches 5MB (currently 4.8MB and 37MB!)
-    size 5M
+    # Rotate when file reaches 5MB OR daily (whichever comes first)
+    maxsize 5M
     
     # Keep 10 rotated files (50MB total per log)
     rotate 10
@@ -39,8 +39,8 @@
 /var/log/ha-reboot.log
 /var/log/ha-update-checker.log
 /var/log/ha-update-report.log {
-    # Rotate when file reaches 10MB
-    size 10M
+    # Rotate when file reaches 10MB OR weekly (whichever comes first)
+    maxsize 10M
     
     # Keep 5 rotated files (50MB total per log)
     rotate 5
@@ -63,8 +63,8 @@
 # Low-frequency logs - light rotation
 /var/log/ha-debug.log
 /var/log/ha-services-control.log {
-    # Rotate when file reaches 20MB
-    size 20M
+    # Rotate when file reaches 20MB OR monthly (whichever comes first)
+    maxsize 20M
     
     # Keep 3 rotated files
     rotate 3
