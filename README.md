@@ -2,6 +2,27 @@
 
 Comprehensive monitoring system for Home Assistant on Raspberry Pi 3B+ with automatic recovery, intelligent alerting, and remote management.
 
+## ⚡ Recent Updates (August 2025)
+
+### 🔧 **ha-failure-notifier v2.0 - Intelligent File Rotation Detection**
+
+**Problem Solved:** Previous version caused notification spam - system sent the same alerts every 5 minutes because it couldn't properly track processed events after log file rotation.
+
+**Key Features:**
+- ✅ **Smart File Rotation Detection** - Tracks metadata (size, creation time, first line hash)
+- ✅ **Position-Based Processing** - Processes only NEW failure events (1-5 lines vs 1400+)
+- ✅ **Anti-Spam Protection** - Limits to 50 events after rotation
+- ✅ **Performance Boost** - Reduced processing time from 60s timeout to <1s execution
+- ✅ **State Persistence** - Maintains position across service restarts
+
+**Files Added:**
+```
+/var/lib/ha-failure-notifier/
+├── position.txt    # Last processed line number
+├── metadata.txt    # File rotation detection data
+└── throttle.txt    # Enhanced notification throttling
+```
+
 ## 🎯 System Capabilities
 
 ### � **20-Point Health Monitoring**
@@ -90,7 +111,7 @@ ha-monitoring-control clean-journal  # Clean systemd journal
 | Service | Frequency | Boot Delay | Purpose |
 |---------|-----------|------------|----------|
 | **ha-watchdog** | 2 minutes | 30 seconds | 20-point system health monitoring |
-| **ha-failure-notifier** | 5 minutes | 1 minute | Telegram alerts & auto-recovery |
+| **ha-failure-notifier** | 5 minutes | 1 minute | Telegram alerts & auto-recovery (v2.0 enhanced) |
 | **nightly-reboot** | Daily 03:30 | - | Maintenance reboot with health report |
 | **update-checker** | Weekdays 09:00 ±30min | - | System/Docker update analysis |
 
@@ -463,3 +484,5 @@ sudo ./restore-tailscale.sh
 ---
 *Smart Home Monitoring System v2.0 - Raspberry Pi 3B+ + Home Assistant*  
 *Создано для автоматического мониторинга и поддержания работоспособности умного дома*
+
+**Latest Update (August 2025):** Enhanced failure notification system with intelligent file rotation detection and anti-spam protection. Now processes only NEW events, eliminating duplicate alerts.

@@ -75,7 +75,7 @@ services:
 ```bash
 # Active monitoring services with scheduled execution
 ha-watchdog.timer         # Every 2 minutes - 20-point system health
-ha-failure-notifier.timer # Every 5 minutes - Telegram alerts & recovery  
+ha-failure-notifier.timer # Every 5 minutes - Telegram alerts & recovery (improved v2.0)
 nightly-reboot.timer      # Daily 03:30 - Maintenance reboot with health report
 update-checker.timer      # Weekdays 09:00 ±30min - Update analysis
 ```
@@ -95,10 +95,19 @@ update-checker.timer      # Weekdays 09:00 ±30min - Update analysis
 /var/log/ha-watchdog.log         # System health checks (every 2min)
 /var/log/ha-failure-notifier.log # Alert processing & recovery actions
 /var/log/ha-failures.log        # Failure events log (processed by notifier)
-/var/log/ha-reboot.log   # Nightly maintenance reports
-/var/log/ha-update-checker.log   # System update analysis
+/var/log/ha-reboot.log          # Nightly maintenance reports
+/var/log/ha-update-checker.log  # System update analysis
 /var/log/ha-services-control.log # Service management operations
 /var/log/ha-debug.log           # Debug information
+```
+
+### Failure Notifier State Files
+```
+/var/lib/ha-failure-notifier/
+├── position.txt    # Last processed line number in ha-failures.log
+├── metadata.txt    # File metadata for rotation detection (size:ctime:mtime:hash)
+├── throttle.txt    # Timestamp tracking for notification throttling
+└── hashes.txt      # Legacy hash storage (kept for compatibility)
 ```
 
 ### Telegram Integration
@@ -171,11 +180,18 @@ update-checker.timer      # Weekdays 09:00 ±30min - Update analysis
   - SSH access and systemd services
 
 #### ha-failure-notifier.sh  
-- **Purpose**: Process failures and send Telegram notifications
+- **Purpose**: Process failures and send Telegram notifications with intelligent file rotation detection
 - **Service**: `ha-failure-notifier.service` (timer-based)
-- **Interval**: Every 1 minute
-- **Features**: Smart throttling, automatic container restart
-- **Notifications**: Critical/Warning/Info with emojis
+- **Interval**: Every 5 minutes
+- **Features**: 
+  - **Smart throttling** - prevents notification spam
+  - **Automatic container restart** for failed services
+  - **File rotation detection** - tracks metadata (size, creation time, first line hash)
+  - **Position tracking** - processes only new failure events
+  - **Spam protection** - limits to 50 events after rotation
+  - **State persistence** - maintains position across restarts
+- **Notifications**: Critical/Warning/Info with emojis and hostname
+- **File Tracking**: Uses `/var/lib/ha-failure-notifier/` for position.txt, metadata.txt, throttle.txt
 
 #### System Management
 - **Control Script**: `/usr/local/bin/ha-monitoring-services-control.sh`
@@ -366,6 +382,55 @@ tts:
 - ⚠️ YAML-конфигурация Telegram устарела
 - ⚠️ SSL-ошибка при доступе через Funnel без сертификата
 - ⚠️ HA Mobile может терять соединение через VPN
+
+## Recent Updates (August 2025)
+
+### ha-failure-notifier.sh v2.0 - Intelligent File Rotation Detection
+
+**Problem Solved:** Previous version caused notification spam - system sent the same alerts every 5 minutes because it couldn't properly track processed events after log file rotation.
+
+**Key Improvements:**
+
+#### 🔍 **Smart File Rotation Detection**
+```bash
+# Tracks multiple metadata points:
+METADATA_FILE="/var/lib/ha-failure-notifier/metadata.txt"
+# Format: "size:creation_time:modification_time:first_line_hash"
+# Example: "46128:1756151200:1756151205:a1b2c3d4e5f6..."
+```
+
+#### 📍 **Position-Based Processing**  
+```bash
+POSITION_FILE="/var/lib/ha-failure-notifier/position.txt"
+# Stores last processed line number instead of relying only on hashes
+# Prevents reprocessing entire file (1400+ lines → 1-5 new lines)
+```
+
+#### 🛡️ **Rotation Detection Logic**
+- **First line hash change** → file was rotated/replaced
+- **File size decrease** → file was truncated/recreated  
+- **Creation time change** → new file created by logrotate
+- **Fallback protection** → if position > total_lines, reset to 0
+
+#### 🚀 **Performance Improvements**
+- **Before**: Processed 1400+ lines every 5 minutes (causing 60s timeouts)
+- **After**: Processes 1-5 new lines in <1 second
+- **Anti-spam**: Limits to 50 events after rotation to prevent notification flood
+
+#### 🔄 **Spam Protection After Rotation**
+```bash
+if [[ "$file_rotated" == true ]] && (( lines_to_process > 50 )); then
+    # Process only last 50 events, not all 1400+
+    last_position=$((total_lines - 50))
+fi
+```
+
+**Files Added:**
+- `metadata.txt` - File rotation detection
+- `position.txt` - Last processed line tracking  
+- Enhanced throttling in `throttle.txt`
+
+**Result:** System now sends notifications only for NEW failures, eliminating spam of repeated old alerts every 5 minutes.
 
 ## 10. Рекомендации и ToDo
 

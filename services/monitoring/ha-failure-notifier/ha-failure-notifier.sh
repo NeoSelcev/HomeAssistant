@@ -1,9 +1,11 @@
 #!/bin/bash
 
-# HA Failure Notifier с Telegram-уведомлениями
+# HA Failure Notifier с Telegram-уведомлениями (Исправленная версия)
 LOG_FILE="/var/log/ha-failures.log"
 ACTION_LOG="/var/log/ha-failure-notifier.log"
 HASH_FILE="/var/lib/ha-failure-notifier/hashes.txt"
+POSITION_FILE="/var/lib/ha-failure-notifier/position.txt"
+METADATA_FILE="/var/lib/ha-failure-notifier/metadata.txt"
 CONFIG_FILE="/etc/ha-watchdog/config"
 THROTTLE_FILE="/var/lib/ha-failure-notifier/throttle.txt"
 
@@ -21,10 +23,81 @@ THROTTLE_MINUTES=${THROTTLE_MINUTES:-60}
 
 # Инициализация
 [[ ! -f "$HASH_FILE" ]] && mkdir -p "$(dirname "$HASH_FILE")" && touch "$HASH_FILE"
+[[ ! -f "$POSITION_FILE" ]] && mkdir -p "$(dirname "$POSITION_FILE")" && echo "0" > "$POSITION_FILE"
+[[ ! -f "$METADATA_FILE" ]] && mkdir -p "$(dirname "$METADATA_FILE")" && touch "$METADATA_FILE"
 [[ ! -f "$THROTTLE_FILE" ]] && mkdir -p "$(dirname "$THROTTLE_FILE")" && touch "$THROTTLE_FILE"
 
 log_action() {
     echo "$(date '+%F %T') [FAILURE-NOTIFIER] $1" >> "$ACTION_LOG"
+}
+
+# Получить метаданные файла
+get_file_metadata() {
+    local file="$1"
+    if [[ -f "$file" ]]; then
+        # Возвращаем: размер:время_создания:время_модификации:хеш_первой_строки
+        local size=$(stat -c%s "$file" 2>/dev/null || echo "0")
+        local ctime=$(stat -c%Z "$file" 2>/dev/null || echo "0")  # время изменения inode (создания/ротации)
+        local mtime=$(stat -c%Y "$file" 2>/dev/null || echo "0")  # время модификации содержимого
+        local first_line_hash=""
+        
+        if [[ -s "$file" ]]; then
+            first_line_hash=$(head -n1 "$file" 2>/dev/null | sha256sum | cut -d' ' -f1)
+        fi
+        
+        echo "${size}:${ctime}:${mtime}:${first_line_hash}"
+    else
+        echo "0:0:0:"
+    fi
+}
+
+# Проверить, был ли файл ротирован
+is_file_rotated() {
+    local current_metadata="$1"
+    local saved_metadata="$2"
+    
+    # Парсим метаданные: размер:время_создания:время_модификации:хеш_первой_строки
+    IFS=':' read -r curr_size curr_ctime curr_mtime curr_hash <<< "$current_metadata"
+    IFS=':' read -r saved_size saved_ctime saved_mtime saved_hash <<< "$saved_metadata"
+    
+    # Файл ротирован если:
+    # 1. Хеш первой строки изменился (файл заменен)
+    # 2. Размер файла стал меньше предыдущего (файл усечен/пересоздан)
+    # 3. Время создания файла изменилось (файл пересоздан при ротации)
+    # 4. Время создания новее времени модификации (новый файл)
+    
+    if [[ -n "$saved_hash" && -n "$curr_hash" && "$curr_hash" != "$saved_hash" ]]; then
+        log_action "ROTATION DETECTED: First line hash changed ($saved_hash -> $curr_hash)"
+        return 0
+    fi
+    
+    if [[ "$curr_size" -lt "$saved_size" ]]; then
+        log_action "ROTATION DETECTED: File size decreased ($saved_size -> $curr_size)"
+        return 0
+    fi
+    
+    # Проверяем время создания файла (inode change time)
+    if [[ -n "$saved_ctime" && -n "$curr_ctime" && "$curr_ctime" != "$saved_ctime" ]]; then
+        # Если время создания изменилось И новое время создания больше старого времени модификации
+        # это значит файл был пересоздан
+        if [[ "$curr_ctime" -gt "$saved_mtime" ]]; then
+            log_action "ROTATION DETECTED: File creation time changed ($saved_ctime -> $curr_ctime)"
+            return 0
+        fi
+    fi
+    
+    # Дополнительная проверка: если время создания больше времени модификации
+    # это может означать новый файл
+    if [[ -n "$curr_ctime" && -n "$curr_mtime" && "$curr_ctime" -gt "$curr_mtime" ]]; then
+        local time_diff=$((curr_ctime - curr_mtime))
+        # Если разница больше 60 секунд, вероятно файл был создан заново
+        if [[ "$time_diff" -gt 60 ]]; then
+            log_action "ROTATION DETECTED: Creation time > modification time (diff: ${time_diff}s)"
+            return 0
+        fi
+    fi
+    
+    return 1
 }
 
 send_telegram() {
@@ -278,6 +351,13 @@ process_failure() {
             should_throttle=true
             throttle_minutes=240
             ;;
+        *"SD_CARD_ERRORS"*)
+            event_type="SD_CARD_ERRORS"
+            message="Ошибки SD карты обнаружены"
+            priority="critical"
+            should_throttle=true
+            throttle_minutes=60
+            ;;
         *)
             event_type="UNKNOWN"
             message="Неизвестная проблема: $line"
@@ -295,7 +375,7 @@ process_failure() {
     log_action "PROCESSED: $event_type - $message"
 }
 
-# Основная функция
+# Основная функция с улучшенным алгоритмом позиционирования
 main() {
     log_action "Starting failure processing..."
     
@@ -304,64 +384,67 @@ main() {
         return 1
     fi
     
-    local last_hash=$(cat "$HASH_FILE" 2>/dev/null)
-    local start_processing=0
+    local total_lines=$(wc -l < "$LOG_FILE")
+    local last_position=$(cat "$POSITION_FILE" 2>/dev/null || echo "0")
+    local current_metadata=$(get_file_metadata "$LOG_FILE")
+    local saved_metadata=$(cat "$METADATA_FILE" 2>/dev/null || echo "")
     local processed_lines=0
-    local hash_found=0
-    local current_hash=""
     
-    # Определяем режим работы
-    if [[ -z "$last_hash" ]]; then
-        log_action "First run - no previous hash found, processing all existing failures"
-        start_processing=1
-    else
-        log_action "Resuming from last hash: ${last_hash:0:8}..."
+    log_action "Log file has $total_lines lines, last position: $last_position"
+    log_action "Current metadata: $current_metadata"
+    log_action "Saved metadata: $saved_metadata"
+    
+    # Проверяем, был ли файл ротирован
+    local file_rotated=false
+    if [[ -n "$saved_metadata" ]] && is_file_rotated "$current_metadata" "$saved_metadata"; then
+        file_rotated=true
+        last_position=0
+        log_action "File rotation detected, starting from beginning"
     fi
     
-    while IFS= read -r line; do
-        # Пропускаем пустые строки и строки без временной метки
-        [[ -z "$line" || "$line" != *" "* ]] && continue
-        
-        current_hash=$(echo -n "$line" | sha256sum | cut -d ' ' -f1)
-        
-        # Если есть last_hash, ищем его в файле
-        if [[ -n "$last_hash" ]] && [[ "$start_processing" -eq 0 ]]; then
-            if [[ "$current_hash" == "$last_hash" ]]; then
-                hash_found=1
-                start_processing=1
-                log_action "Found last processed hash, resuming from next line"
-                continue  # Пропускаем уже обработанную строку
-            fi
-            continue
-        fi
-        
-        # Обрабатываем новые строки
-        if [[ "$start_processing" -eq 1 ]]; then
-            process_failure "$line"
-            ((processed_lines++))
-        fi
-        
-    done < "$LOG_FILE"
+    # Дополнительная проверка: если позиция больше общего количества строк
+    if (( last_position > total_lines )); then
+        log_action "Position $last_position > total lines $total_lines, resetting position"
+        last_position=0
+        file_rotated=true
+    fi
     
-    # Если искали hash но не нашли, это новый лог файл
-    if [[ -n "$last_hash" ]] && [[ "$hash_found" -eq 0 ]]; then
-        log_action "Previous hash not found - log file was rotated/recreated, processing all failures"
-        processed_lines=0
-        while IFS= read -r line; do
+    # Обрабатываем новые строки
+    if (( total_lines > last_position )); then
+        local lines_to_process=$((total_lines - last_position))
+        log_action "Processing $lines_to_process new lines (from $((last_position + 1)) to $total_lines)"
+        
+        # Если файл был ротирован и у нас много строк, лимитируем обработку
+        # чтобы не перегружать систему уведомлениями
+        if [[ "$file_rotated" == true ]] && (( lines_to_process > 50 )); then
+            log_action "File rotated with $lines_to_process lines, processing only last 50 to avoid spam"
+            last_position=$((total_lines - 50))
+            lines_to_process=50
+        fi
+        
+        # Используем tail для получения только нужных строк
+        tail -n "+$((last_position + 1))" "$LOG_FILE" | head -n "$lines_to_process" | while IFS= read -r line; do
+            # Пропускаем пустые строки и строки без временной метки
             [[ -z "$line" || "$line" != *" "* ]] && continue
-            current_hash=$(echo -n "$line" | sha256sum | cut -d ' ' -f1)
+            
             process_failure "$line"
             ((processed_lines++))
-        done < "$LOG_FILE"
+        done
+        
+        # Сохраняем новую позицию и метаданные
+        echo "$total_lines" > "$POSITION_FILE"
+        echo "$current_metadata" > "$METADATA_FILE"
+        log_action "Updated position to $total_lines, processed $lines_to_process new failure(s)"
+        
+        # Если файл был ротирован, отправляем уведомление
+        if [[ "$file_rotated" == true ]]; then
+            send_telegram "Лог файл был ротирован, обработаны новые события" "info"
+        fi
+    else
+        log_action "No new failures to process"
+        # Обновляем метаданные даже если нет новых строк
+        echo "$current_metadata" > "$METADATA_FILE"
     fi
-    
-    # Сохраняем только последний hash
-    if [[ -n "$current_hash" ]]; then
-        echo "$current_hash" > "$HASH_FILE"
-        log_action "Saved last hash: ${current_hash:0:8}..."
-    fi
-    
-    log_action "Processed $processed_lines new failure(s)"
 }
 
 main "$@"
