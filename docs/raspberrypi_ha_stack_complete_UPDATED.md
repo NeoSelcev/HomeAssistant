@@ -230,6 +230,35 @@ timestamp:priority:message_type
 - **Notifications**: Critical/Warning/Info with emojis and hostname
 - **File Tracking**: Uses `/var/lib/ha-failure-notifier/` for last_timestamp.txt, smart_throttle_history.txt, position.txt, metadata.txt, throttle.txt
 
+#### ha-system-health-check.sh v1.0
+- **Purpose**: Comprehensive system diagnostics and health reporting
+- **Location**: `/usr/local/bin/ha-health-check`
+- **Quick Commands**: `health-check`, `health-quick`, `health-monitor`
+- **Features**:
+  - **37 comprehensive checks** across system resources, network, services, security
+  - **Color-coded output** - ✓ PASS (green), ✗ FAIL (red), ⚠ WARN (yellow)
+  - **Statistical reporting** - percentage scores and health assessment
+  - **Port checking** - uses bash `/dev/tcp` (no external dependencies like netcat)
+  - **Real-time monitoring** mode with 30-second refresh intervals
+  - **Detailed reports** saved to `/tmp/ha-health-report-YYYYMMDD-HHMMSS.txt`
+- **Check Categories**:
+  - System Resources: memory, disk, CPU load, temperature
+  - Network: internet, gateway, DNS, interface status  
+  - Docker: daemon, containers, compose files
+  - HA Services: watchdog, notifier, timers, scripts
+  - Service Ports: HA (8123), Node-RED (1880), Portainer (9000), Zigbee2MQTT (8080)
+  - Log Analysis: file sizes, recent entries, state files
+  - Security: SSH, firewall, updates, fail2ban
+  - Performance: disk speed, memory stress tests
+- **Remote Access Examples**:
+  ```bash
+  ssh rpi-vpn health-check         # Full diagnostics
+  ssh rpi-vpn health-quick         # Essential checks only
+  ssh rpi-vpn health-monitor       # Continuous monitoring
+  ssh rpi-vpn "health-check --help" # Command options
+  ```
+- **Smart Health Assessment**: Automatically categorizes system status from "excellent" to "requires intervention"
+
 #### System Management
 - **Control Script**: `/usr/local/bin/ha-monitoring-services-control.sh`
 - **Usage**: `ha-monitoring-services-control.sh {permissions|restart|status|full}`

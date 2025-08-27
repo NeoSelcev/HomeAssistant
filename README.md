@@ -4,7 +4,35 @@ Comprehensive monitoring system for Home Assistant on Raspberry Pi 3B+ with auto
 
 ## ⚡ Recent Updates (August 2025)
 
-### 🧠 **ha-failure-notifier v3.1 - Smart Throttling System**
+### � **ha-system-health-check v1.0 - Comprehensive System Diagnostics**
+
+**New Tool:** Complete system health monitoring and diagnostics toolkit.
+
+**Comprehensive Checks:**
+- 🖥️ **System Resources** - Memory, disk, CPU load, temperature
+- 🌐 **Network Connectivity** - Internet, gateway, DNS, interfaces
+- 🐳 **Docker Services** - Daemon, containers, compose files
+- 🏠 **HA Monitoring** - Watchdog, notifier, scripts, timers
+- 📊 **Service Availability** - Port checks (8123, 1880, 9000, 8080) using bash `/dev/tcp`
+- 📝 **Log Analysis** - File sizes, recent entries, state files
+- 🔒 **Security Status** - SSH, firewall, updates
+- ⚡ **Performance Tests** - Disk speed, memory stress tests
+
+**Easy Remote Access:**
+```bash
+# Quick commands for Raspberry Pi
+ssh rpi-vpn health-check         # Full diagnostics
+ssh rpi-vpn health-quick         # Fast check
+ssh rpi-vpn health-monitor       # Real-time monitoring
+```
+
+**Smart Reporting:**
+- 🎨 Color-coded results (✓ PASS, ✗ FAIL, ⚠ WARN)
+- 📊 Statistical summary with percentage scores
+- 📋 Detailed reports saved to `/tmp/ha-health-report-*.txt`
+- 🔄 Automatic system health assessment
+
+### �🧠 **ha-failure-notifier v3.1 - Smart Throttling System**
 
 **New Enhancement:** Added intelligent event-type based throttling system that replaces the generic "50 events max" limit with priority-based quotas.
 
@@ -250,6 +278,74 @@ scp -r ./monitoring/ rpi:/tmp/
 ssh rpi "docker ps"
 ssh rpi "vcgencmd measure_temp && free -h"
 ```
+
+## 🩺 System Health Diagnostics
+
+### **Quick Health Check Commands**
+
+The system includes a comprehensive diagnostic tool accessible via simple SSH commands:
+
+```bash
+# Full system diagnostics (37 checks)
+ssh rpi-vpn health-check
+
+# Quick essential checks
+ssh rpi-vpn health-quick
+
+# Real-time monitoring (updates every 30s)
+ssh rpi-vpn health-monitor
+
+# View available options
+ssh rpi-vpn "health-check --help"
+```
+
+### **Diagnostic Coverage**
+
+**System Resources (4 checks)**
+- Memory usage, disk space, CPU load, temperature monitoring
+
+**Network Connectivity (4 checks)**  
+- Internet access, gateway reachability, DNS resolution, active interfaces
+
+**Docker Services (6+ checks)**
+- Docker daemon, container status, compose file validation, specific containers
+
+**HA Monitoring Services (6+ checks)**
+- Watchdog service, failure notifier, timers, script validation
+
+**Service Availability (4 checks)**
+- Port checks for HA (8123), Node-RED (1880), Portainer (9000), Zigbee2MQTT (8080)
+
+**Log Analysis (6+ checks)**
+- Log file sizes, recent entries, state files, throttling statistics
+
+**Security & Updates (4+ checks)**
+- SSH status, firewall, fail2ban, security updates
+
+**Performance Tests (2 checks)**
+- Disk write speed, memory stress testing
+
+### **Diagnostic Output Example**
+```
+================================================================
+  HA System Health Check v1.0
+================================================================
+[✓ PASS] Использование памяти (67.2%)
+[✓ PASS] Home Assistant (порт 8123) - Сервис отвечает  
+[⚠ WARN] Portainer (порт 9000) - Сервис недоступен
+[✗ FAIL] DNS разрешение - DNS не работает
+
+Всего проверок: 37 | Успешно: 24 (64%) | Предупреждения: 8 | Ошибки: 5
+🚨 СИСТЕМА ТРЕБУЕТ НЕМЕДЛЕННОГО ВМЕШАТЕЛЬСТВА
+```
+
+### **Automated Setup on Raspberry Pi**
+
+The health check system is automatically configured during installation:
+- **Main script**: `/usr/local/bin/ha-health-check`
+- **Quick access**: `health-check`, `health-quick`, `health-monitor` commands  
+- **Reports**: Saved to `/tmp/ha-health-report-YYYYMMDD-HHMMSS.txt`
+- **Logs**: Diagnostic logs in `/var/log/ha-health-check.log`
 
 ### **Key Setup (if needed)**
 ```bash
