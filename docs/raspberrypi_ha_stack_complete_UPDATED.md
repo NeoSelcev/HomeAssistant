@@ -126,11 +126,21 @@ update-checker.timer      # Weekdays 09:00 ±30min - Update analysis
 ### Failure Notifier State Files
 ```
 /var/lib/ha-failure-notifier/
-├── last_timestamp.txt  # Unix timestamp of last processed event (v3.0)
-├── position.txt        # Legacy: Last processed line number (kept for compatibility)
-├── metadata.txt        # File metadata for rotation detection (size:ctime:mtime:hash)
-├── throttle.txt        # Timestamp tracking for notification throttling
-└── hashes.txt          # Legacy hash storage (kept for compatibility)
+├── last_timestamp.txt        # Unix timestamp of last processed event (v3.0)
+├── smart_throttle_history.txt # Smart throttling event history with priorities (v3.1)
+├── position.txt              # Legacy: Last processed line number (kept for compatibility)
+├── metadata.txt              # File metadata for rotation detection (size:ctime:mtime:hash)
+├── throttle.txt              # Legacy: Timestamp tracking for notification throttling
+└── hashes.txt                # Legacy hash storage (kept for compatibility)
+```
+
+**Smart Throttling (v3.1) State Format:**
+```
+# smart_throttle_history.txt entries:
+timestamp:priority:message_type
+1756276395:critical:FATAL_ERROR
+1756276401:warning:WARN_PERFORMANCE
+1756276405:high:ERROR_CONNECTION
 ```
 
 ### Telegram Integration
@@ -206,16 +216,19 @@ update-checker.timer      # Weekdays 09:00 ±30min - Update analysis
 - **Purpose**: Process failures and send Telegram notifications with timestamp-based event tracking
 - **Service**: `ha-failure-notifier.service` (timer-based)
 - **Interval**: Every 5 minutes
-- **Version**: 3.0 - Timestamp-based processing (August 2025)
+- **Version**: 3.1 - Smart Priority-Based Throttling (August 2025)
 - **Features**: 
+  - **Smart throttling** - priority-based event quotas (Critical:20, High:10, Warning:5, Info:3 per 30min)
   - **Timestamp tracking** - processes only events newer than last processed timestamp
+  - **Event classification** - automatic priority detection (FATAL/ERROR/WARN/INFO)
   - **Rotation independence** - works regardless of log file changes/rotation
   - **Duplicate prevention** - eliminates cascading notifications after log rotation
-  - **Smart throttling** - prevents notification spam
+  - **Rolling window** - 30-minute sliding window with automatic cleanup
+  - **Dual throttling system** - smart priority-based + legacy time-based for compatibility
   - **Automatic container restart** for failed services
-  - **State persistence** - maintains timestamp across restarts
+  - **State persistence** - maintains timestamp and throttling state across restarts
 - **Notifications**: Critical/Warning/Info with emojis and hostname
-- **File Tracking**: Uses `/var/lib/ha-failure-notifier/` for last_timestamp.txt, position.txt, metadata.txt, throttle.txt
+- **File Tracking**: Uses `/var/lib/ha-failure-notifier/` for last_timestamp.txt, smart_throttle_history.txt, position.txt, metadata.txt, throttle.txt
 
 #### System Management
 - **Control Script**: `/usr/local/bin/ha-monitoring-services-control.sh`
@@ -408,6 +421,39 @@ tts:
 - ⚠️ HA Mobile может терять соединение через VPN
 
 ## Recent Updates (August 2025)
+
+### ha-failure-notifier.sh v3.1 - Smart Priority-Based Throttling
+
+**New Enhancement:** Added intelligent event throttling system with priority-based quotas to prevent notification overload while ensuring critical alerts always get through.
+
+**Smart Throttling Features:**
+
+#### 🎯 **Priority-Based Event Quotas**
+```bash
+# Event type priority mapping and limits per 30-minute window:
+CRITICAL (FATAL/ERROR):  20 events max  # Most important alerts
+HIGH (ERROR patterns):   10 events max  # Important failures  
+WARNING (WARN):          5 events max   # Moderate issues
+INFO (INFO/DEBUG):       3 events max   # Low priority status
+```
+
+#### 🧠 **Automatic Event Classification**
+- **CRITICAL**: FATAL, ERROR, connection failures, service crashes
+- **HIGH**: Authentication errors, database issues, critical timeouts
+- **WARNING**: WARN level events, performance degradation
+- **INFO**: INFO, DEBUG, routine status messages
+
+#### ⏰ **Rolling Window System**
+- **30-minute sliding window** with automatic cleanup
+- **Dual throttling**: Smart priority-based + legacy time-based
+- **State persistence**: Survives service restarts and system reboots
+
+#### 📁 **New State Files**
+```bash
+/var/lib/ha-failure-notifier/smart_throttle_history.txt
+# Format: timestamp:priority:count
+# Example: 1756276395:critical:3
+```
 
 ### ha-failure-notifier.sh v3.0 - Timestamp-Based Event Processing
 

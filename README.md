@@ -4,6 +4,19 @@ Comprehensive monitoring system for Home Assistant on Raspberry Pi 3B+ with auto
 
 ## ⚡ Recent Updates (August 2025)
 
+### 🧠 **ha-failure-notifier v3.1 - Smart Throttling System**
+
+**New Enhancement:** Added intelligent event-type based throttling system that replaces the generic "50 events max" limit with priority-based quotas.
+
+**Smart Throttling Features:**
+- 🔴 **Critical Events** (HA_SERVICE_DOWN, MEMORY_CRITICAL): 20 events/30min
+- 🟡 **High Priority** (HIGH_LOAD, CONNECTION_LOST): 10 events/30min  
+- 🟠 **Warnings** (MEMORY_WARNING, DISK_WARNING): 5 events/30min
+- 🔵 **Info Events** (other): 3 events/30min
+- ⏰ **Rolling Window** - 30-minute sliding window with automatic cleanup
+- 🔄 **Type Independence** - Different event types don't block each other
+- 🛡️ **Dual Protection** - Smart + legacy throttling for compatibility
+
 ### 🔧 **ha-failure-notifier v3.0 - Timestamp-Based Event Processing**
 
 **Problem Solved:** Version 2.0 caused cascades of identical Telegram notifications after log rotation because the notifier would reprocess all events from the beginning of the new log file, including old events that had already been processed.
@@ -11,14 +24,18 @@ Comprehensive monitoring system for Home Assistant on Raspberry Pi 3B+ with auto
 **Solution:** Completely redesigned to use **timestamp-based tracking** instead of file position tracking.
 
 **Key Features:**
+- ✅ **Smart Throttling** - Priority-based event quotas (Critical:20, High:10, Warning:5, Info:3 per 30min)
 - ✅ **Timestamp Tracking** - Stores Unix timestamp of last processed event instead of file position
+- ✅ **Intelligent Event Classification** - Automatic priority detection (FATAL/ERROR/WARN/INFO)
 - ✅ **Rotation Independence** - Works regardless of log file rotation, truncation, or recreation
 - ✅ **Duplicate Prevention** - Processes only events newer than last processed timestamp
 - ✅ **Perfect Accuracy** - Based on actual event time, not file structure
+- ✅ **Dual Throttling System** - Smart priority-based + legacy time-based for compatibility
+- ✅ **Rolling Window** - 30-minute sliding window with automatic cleanup
 - ✅ **Backward Compatibility** - Maintains all existing functionality and state files
 - ✅ **Smart File Rotation Detection** - Tracks metadata (size, creation time, first line hash)
 - ✅ **Position-Based Processing** - Processes only NEW failure events (1-5 lines vs 1400+)
-- ✅ **Anti-Spam Protection** - Limits to 50 events after rotation
+- ✅ **Anti-Spam Protection** - Limits to 50 events after rotation + smart priority limits
 - ✅ **Performance Boost** - Reduced processing time from 60s timeout to <1s execution
 - ✅ **State Persistence** - Maintains position across service restarts
 

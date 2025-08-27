@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# HA Failure Notifier v3.0 с timestamp-based tracking
+# HA Failure Notifier v3.1 с smart priority-based throttling
 LOG_FILE="/var/log/ha-failures.log"
 ACTION_LOG="/var/log/ha-failure-notifier.log"
 HASH_FILE="/var/lib/ha-failure-notifier/hashes.txt"
@@ -17,6 +17,13 @@ fi
 
 # Значения по умолчанию если не заданы в конфиге
 THROTTLE_MINUTES=${THROTTLE_MINUTES:-60}
+
+# Умные лимиты по типам событий (v3.1)
+CRITICAL_EVENTS_LIMIT=20      # HA_SERVICE_DOWN, MEMORY_CRITICAL
+HIGH_LOAD_EVENTS_LIMIT=10     # HIGH_LOAD
+WARNING_EVENTS_LIMIT=5        # MEMORY_WARNING, DISK_WARNING
+INFO_EVENTS_LIMIT=3           # Остальные события
+THROTTLE_WINDOW_MINUTES=30    # Окно для подсчета повторений
 
 # Telegram настройки (должны быть в config файле)
 # TELEGRAM_BOT_TOKEN="your_bot_token_here"
@@ -57,6 +64,61 @@ is_event_newer() {
     
     # Событие новое если его timestamp больше последнего обработанного
     (( event_timestamp > last_timestamp ))
+}
+
+# Определить приоритет события для умного троттлинга (v3.1)
+get_event_priority() {
+    local event_type="$1"
+    
+    case "$event_type" in
+        *"HA_SERVICE_DOWN"* | *"MEMORY_CRITICAL"* | *"DISK_CRITICAL"*)
+            echo "critical" ;;
+        *"HIGH_LOAD"* | *"CONNECTION_LOST"*)
+            echo "high" ;;
+        *"MEMORY_WARNING"* | *"DISK_WARNING"*)
+            echo "warning" ;;
+        *)
+            echo "info" ;;
+    esac
+}
+
+# Проверить, нужно ли троттлить событие по умному алгоритму (v3.1)
+should_throttle_smart() {
+    local event_type="$1"
+    local event_timestamp="$2"
+    local priority=$(get_event_priority "$event_type")
+    
+    # Подсчет событий этого типа за последние 30 минут
+    local window_start=$((event_timestamp - THROTTLE_WINDOW_MINUTES * 60))
+    local count=0
+    
+    if [[ -f "$THROTTLE_FILE" ]]; then
+        count=$(awk -F: -v window="$window_start" -v type="$event_type" \
+                   '$1 >= window && $0 ~ type' "$THROTTLE_FILE" 2>/dev/null | wc -l)
+    fi
+    
+    # Проверка лимитов по приоритету
+    case "$priority" in
+        "critical") [[ "$count" -ge "$CRITICAL_EVENTS_LIMIT" ]] ;;
+        "high")     [[ "$count" -ge "$HIGH_LOAD_EVENTS_LIMIT" ]] ;;
+        "warning")  [[ "$count" -ge "$WARNING_EVENTS_LIMIT" ]] ;;
+        "info")     [[ "$count" -ge "$INFO_EVENTS_LIMIT" ]] ;;
+    esac
+}
+
+# Очистить старые записи из истории умного троттлинга (v3.1)
+cleanup_smart_throttle() {
+    local cutoff_time="$(($(date +%s) - THROTTLE_WINDOW_MINUTES * 60))"
+    
+    if [[ -f "$THROTTLE_FILE" ]]; then
+        # Если файл содержит новый формат (timestamp:type:message), очищаем его
+        if head -1 "$THROTTLE_FILE" 2>/dev/null | grep -q ':'; then
+            awk -F: -v cutoff="$cutoff_time" \
+                '$1 >= cutoff' \
+                "$THROTTLE_FILE" > "$THROTTLE_FILE.tmp" && \
+            mv "$THROTTLE_FILE.tmp" "$THROTTLE_FILE"
+        fi
+    fi
 }
 
 # Получить метаданные файла
@@ -393,11 +455,23 @@ process_failure() {
             ;;
     esac
     
-    # Проверяем throttling
-    if [[ "$should_throttle" == true ]] && is_throttled "$event_type" "$throttle_minutes"; then
-        log_action "THROTTLED: $event_type (< $throttle_minutes min)"
+    # Проверяем умный throttling (v3.1) - приоритет над старой логикой
+    if should_throttle_smart "$event_type" "$event_timestamp"; then
+        local priority_level=$(get_event_priority "$event_type")
+        log_action "SMART_THROTTLED: [$priority_level] $event_type (лимит достигнут)"
+        # Добавляем в историю даже троттлированные события
+        echo "${event_timestamp}:${event_type}:${line}" >> "$THROTTLE_FILE"
         return
     fi
+    
+    # Проверяем старый throttling (для совместимости)
+    if [[ "$should_throttle" == true ]] && is_throttled "$event_type" "$throttle_minutes"; then
+        log_action "LEGACY_THROTTLED: $event_type (< $throttle_minutes min)"
+        return
+    fi
+    
+    # Добавляем событие в историю умного троттлинга
+    echo "${event_timestamp}:${event_type}:${line}" >> "$THROTTLE_FILE"
     
     # Отправляем уведомление
     send_telegram "$message" "$priority"
@@ -412,12 +486,15 @@ process_failure() {
 
 # Основная функция с timestamp-based алгоритмом
 main() {
-    log_action "Starting failure processing (v3.0 timestamp-based)..."
+    log_action "Starting failure processing (v3.1 smart priority-based throttling)..."
     
     if [[ ! -f "$LOG_FILE" ]]; then
         log_action "Failure log file not found: $LOG_FILE"
         return 1
     fi
+    
+    # Очищаем старые записи из истории умного троттлинга
+    cleanup_smart_throttle
     
     local total_lines=$(wc -l < "$LOG_FILE")
     local last_timestamp=$(cat "$TIMESTAMP_FILE" 2>/dev/null || echo "0")
