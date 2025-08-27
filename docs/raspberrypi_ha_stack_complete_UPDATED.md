@@ -8,9 +8,31 @@
 - **SSH Access**: Port 22, key-based authentication
 - **Installation**: Manual setup with full root access
 - **Memory**: 1GB RAM + 2GB Swap file (/swapfile)
-- **Storage**: MicroSD card with regular health monitoring
+- **Storage**: MicroSD card with regular health monitoring**Key Improvements v3.0:**
 
-### Network Configuration
+#### 🕒 **Timestamp-Based Processing**
+```bash
+# New state file stores Unix timestamp of last processed event
+/var/lib/ha-failure-notifier/last_timestamp.txt
+# Example content: 1756276395 (last processed event timestamp)
+```
+
+#### 🔄 **Algorithm Change**
+- **Before v3.0**: Track file position, reprocess after rotation
+- **After v3.0**: Track event timestamp, process only newer events
+- **Result**: Eliminates duplicate notifications regardless of file changes
+
+#### 🛡️ **Duplicate Prevention**
+- Reads entire log file but processes only events with timestamp > last_processed
+- Works with any log rotation, truncation, or file recreation
+- Maintains perfect accuracy based on actual event occurrence time
+
+**Preserved v2.0 Features:**
+- ✅ **Smart File Rotation Detection** - Tracks metadata (size, creation time, first line hash)
+- ✅ **Position-Based Processing** - Processes only NEW failure events (1-5 lines vs 1400+)
+- ✅ **Anti-Spam Protection** - Limits to 50 events after rotation
+- ✅ **Performance Boost** - Reduced processing time from 60s timeout to <1s execution
+- ✅ **State Persistence** - Maintains position across service restartsiguration
 - **Local Network**: 192.168.1.0/24
 - **PI Address**: 192.168.1.21
 - **Router**: 192.168.1.1
@@ -104,10 +126,11 @@ update-checker.timer      # Weekdays 09:00 ±30min - Update analysis
 ### Failure Notifier State Files
 ```
 /var/lib/ha-failure-notifier/
-├── position.txt    # Last processed line number in ha-failures.log
-├── metadata.txt    # File metadata for rotation detection (size:ctime:mtime:hash)
-├── throttle.txt    # Timestamp tracking for notification throttling
-└── hashes.txt      # Legacy hash storage (kept for compatibility)
+├── last_timestamp.txt  # Unix timestamp of last processed event (v3.0)
+├── position.txt        # Legacy: Last processed line number (kept for compatibility)
+├── metadata.txt        # File metadata for rotation detection (size:ctime:mtime:hash)
+├── throttle.txt        # Timestamp tracking for notification throttling
+└── hashes.txt          # Legacy hash storage (kept for compatibility)
 ```
 
 ### Telegram Integration
@@ -180,18 +203,19 @@ update-checker.timer      # Weekdays 09:00 ±30min - Update analysis
   - SSH access and systemd services
 
 #### ha-failure-notifier.sh  
-- **Purpose**: Process failures and send Telegram notifications with intelligent file rotation detection
+- **Purpose**: Process failures and send Telegram notifications with timestamp-based event tracking
 - **Service**: `ha-failure-notifier.service` (timer-based)
 - **Interval**: Every 5 minutes
+- **Version**: 3.0 - Timestamp-based processing (August 2025)
 - **Features**: 
+  - **Timestamp tracking** - processes only events newer than last processed timestamp
+  - **Rotation independence** - works regardless of log file changes/rotation
+  - **Duplicate prevention** - eliminates cascading notifications after log rotation
   - **Smart throttling** - prevents notification spam
   - **Automatic container restart** for failed services
-  - **File rotation detection** - tracks metadata (size, creation time, first line hash)
-  - **Position tracking** - processes only new failure events
-  - **Spam protection** - limits to 50 events after rotation
-  - **State persistence** - maintains position across restarts
+  - **State persistence** - maintains timestamp across restarts
 - **Notifications**: Critical/Warning/Info with emojis and hostname
-- **File Tracking**: Uses `/var/lib/ha-failure-notifier/` for position.txt, metadata.txt, throttle.txt
+- **File Tracking**: Uses `/var/lib/ha-failure-notifier/` for last_timestamp.txt, position.txt, metadata.txt, throttle.txt
 
 #### System Management
 - **Control Script**: `/usr/local/bin/ha-monitoring-services-control.sh`
@@ -385,52 +409,36 @@ tts:
 
 ## Recent Updates (August 2025)
 
-### ha-failure-notifier.sh v2.0 - Intelligent File Rotation Detection
+### ha-failure-notifier.sh v3.0 - Timestamp-Based Event Processing
 
-**Problem Solved:** Previous version caused notification spam - system sent the same alerts every 5 minutes because it couldn't properly track processed events after log file rotation.
+**Problem Solved:** Version 2.0 caused cascades of identical Telegram notifications after log rotation because the notifier would reprocess all events from the beginning of the new log file.
+
+**Solution:** Redesigned to use **timestamp-based tracking** instead of file position tracking.
 
 **Key Improvements:**
 
-#### 🔍 **Smart File Rotation Detection**
+#### � **Timestamp-Based Processing**
 ```bash
-# Tracks multiple metadata points:
-METADATA_FILE="/var/lib/ha-failure-notifier/metadata.txt"
-# Format: "size:creation_time:modification_time:first_line_hash"
-# Example: "46128:1756151200:1756151205:a1b2c3d4e5f6..."
+# New state file stores Unix timestamp of last processed event
+/var/lib/ha-failure-notifier/last_timestamp.txt
+# Example content: 1756276395 (last processed event timestamp)
 ```
 
-#### 📍 **Position-Based Processing**  
-```bash
-POSITION_FILE="/var/lib/ha-failure-notifier/position.txt"
-# Stores last processed line number instead of relying only on hashes
-# Prevents reprocessing entire file (1400+ lines → 1-5 new lines)
-```
+#### � **Algorithm Change**
+- **Before v3.0**: Track file position, reprocess after rotation
+- **After v3.0**: Track event timestamp, process only newer events
+- **Result**: Eliminates duplicate notifications regardless of file changes
 
-#### 🛡️ **Rotation Detection Logic**
-- **First line hash change** → file was rotated/replaced
-- **File size decrease** → file was truncated/recreated  
-- **Creation time change** → new file created by logrotate
-- **Fallback protection** → if position > total_lines, reset to 0
+#### �️ **Duplicate Prevention**
+- Reads entire log file but processes only events with timestamp > last_processed
+- Works with any log rotation, truncation, or file recreation
+- Maintains perfect accuracy based on actual event occurrence time
 
-#### 🚀 **Performance Improvements**
-- **Before**: Processed 1400+ lines every 5 minutes (causing 60s timeouts)
-- **After**: Processes 1-5 new lines in <1 second
-- **Anti-spam**: Limits to 50 events after rotation to prevent notification flood
-
-#### 🔄 **Spam Protection After Rotation**
-```bash
-if [[ "$file_rotated" == true ]] && (( lines_to_process > 50 )); then
-    # Process only last 50 events, not all 1400+
-    last_position=$((total_lines - 50))
-fi
-```
-
-**Files Added:**
-- `metadata.txt` - File rotation detection
-- `position.txt` - Last processed line tracking  
-- Enhanced throttling in `throttle.txt`
-
-**Result:** System now sends notifications only for NEW failures, eliminating spam of repeated old alerts every 5 minutes.
+**Files Updated:**
+- `last_timestamp.txt` - NEW: Unix timestamp tracking
+- `position.txt` - Kept for backward compatibility  
+- `metadata.txt` - Enhanced rotation detection
+- `throttle.txt` - Smart notification throttling
 
 ## 10. Рекомендации и ToDo
 

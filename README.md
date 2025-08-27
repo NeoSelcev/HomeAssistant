@@ -4,24 +4,46 @@ Comprehensive monitoring system for Home Assistant on Raspberry Pi 3B+ with auto
 
 ## ⚡ Recent Updates (August 2025)
 
-### 🔧 **ha-failure-notifier v2.0 - Intelligent File Rotation Detection**
+### 🔧 **ha-failure-notifier v3.0 - Timestamp-Based Event Processing**
 
-**Problem Solved:** Previous version caused notification spam - system sent the same alerts every 5 minutes because it couldn't properly track processed events after log file rotation.
+**Problem Solved:** Version 2.0 caused cascades of identical Telegram notifications after log rotation because the notifier would reprocess all events from the beginning of the new log file, including old events that had already been processed.
+
+**Solution:** Completely redesigned to use **timestamp-based tracking** instead of file position tracking.
 
 **Key Features:**
+- ✅ **Timestamp Tracking** - Stores Unix timestamp of last processed event instead of file position
+- ✅ **Rotation Independence** - Works regardless of log file rotation, truncation, or recreation
+- ✅ **Duplicate Prevention** - Processes only events newer than last processed timestamp
+- ✅ **Perfect Accuracy** - Based on actual event time, not file structure
+- ✅ **Backward Compatibility** - Maintains all existing functionality and state files
 - ✅ **Smart File Rotation Detection** - Tracks metadata (size, creation time, first line hash)
 - ✅ **Position-Based Processing** - Processes only NEW failure events (1-5 lines vs 1400+)
 - ✅ **Anti-Spam Protection** - Limits to 50 events after rotation
 - ✅ **Performance Boost** - Reduced processing time from 60s timeout to <1s execution
 - ✅ **State Persistence** - Maintains position across service restarts
 
+**How It Works:**
+```bash
+# New state file: /var/lib/ha-failure-notifier/last_timestamp.txt
+# Stores Unix timestamp: 1756276395 (last processed event time)
+
+# Algorithm:
+1. Read last_timestamp from file
+2. For each line in log: extract event timestamp  
+3. Process only if event_timestamp > last_timestamp
+4. Save newest processed timestamp
+```
+
 **Files Added:**
 ```
 /var/lib/ha-failure-notifier/
-├── position.txt    # Last processed line number
-├── metadata.txt    # File rotation detection data
-└── throttle.txt    # Enhanced notification throttling
+├── last_timestamp.txt  # NEW: Unix timestamp of last processed event
+├── position.txt        # Kept for compatibility
+├── metadata.txt        # Enhanced file rotation detection
+└── throttle.txt        # Smart notification throttling
 ```
+
+**Result:** Eliminates cascading duplicate notifications after log rotation. Events are processed exactly once based on their actual occurrence time, regardless of file changes.
 
 ## 🎯 System Capabilities
 

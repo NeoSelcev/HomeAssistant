@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# HA Failure Notifier с Telegram-уведомлениями (Исправленная версия)
+# HA Failure Notifier v3.0 с timestamp-based tracking
 LOG_FILE="/var/log/ha-failures.log"
 ACTION_LOG="/var/log/ha-failure-notifier.log"
 HASH_FILE="/var/lib/ha-failure-notifier/hashes.txt"
 POSITION_FILE="/var/lib/ha-failure-notifier/position.txt"
 METADATA_FILE="/var/lib/ha-failure-notifier/metadata.txt"
+TIMESTAMP_FILE="/var/lib/ha-failure-notifier/last_timestamp.txt"
 CONFIG_FILE="/etc/ha-watchdog/config"
 THROTTLE_FILE="/var/lib/ha-failure-notifier/throttle.txt"
 
@@ -25,10 +26,37 @@ THROTTLE_MINUTES=${THROTTLE_MINUTES:-60}
 [[ ! -f "$HASH_FILE" ]] && mkdir -p "$(dirname "$HASH_FILE")" && touch "$HASH_FILE"
 [[ ! -f "$POSITION_FILE" ]] && mkdir -p "$(dirname "$POSITION_FILE")" && echo "0" > "$POSITION_FILE"
 [[ ! -f "$METADATA_FILE" ]] && mkdir -p "$(dirname "$METADATA_FILE")" && touch "$METADATA_FILE"
+[[ ! -f "$TIMESTAMP_FILE" ]] && mkdir -p "$(dirname "$TIMESTAMP_FILE")" && echo "0" > "$TIMESTAMP_FILE"
 [[ ! -f "$THROTTLE_FILE" ]] && mkdir -p "$(dirname "$THROTTLE_FILE")" && touch "$THROTTLE_FILE"
 
 log_action() {
     echo "$(date '+%F %T') [FAILURE-NOTIFIER] $1" >> "$ACTION_LOG"
+}
+
+# Извлечь timestamp из строки лога
+extract_timestamp() {
+    local line="$1"
+    # Ожидаем формат: YYYY-MM-DD HH:MM:SS
+    if [[ "$line" =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}) ]]; then
+        local datetime="${BASH_REMATCH[1]}"
+        # Конвертируем в Unix timestamp
+        date -d "$datetime" +%s 2>/dev/null || echo "0"
+    else
+        echo "0"
+    fi
+}
+
+# Проверить, новее ли событие чем последний обработанный timestamp
+is_event_newer() {
+    local event_timestamp="$1"
+    local last_timestamp="$2"
+    
+    # Если timestamps некорректны, считаем событие новым
+    [[ "$event_timestamp" == "0" ]] && return 0
+    [[ "$last_timestamp" == "0" ]] && return 0
+    
+    # Событие новое если его timestamp больше последнего обработанного
+    (( event_timestamp > last_timestamp ))
 }
 
 # Получить метаданные файла
@@ -186,6 +214,7 @@ restart_interface() {
 
 process_failure() {
     local line="$1"
+    local event_timestamp="$2"
     local event_type
     local message
     local priority="warning"
@@ -373,11 +402,17 @@ process_failure() {
     # Отправляем уведомление
     send_telegram "$message" "$priority"
     log_action "PROCESSED: $event_type - $message"
+    
+    # Сохраняем timestamp последнего обработанного события
+    if [[ "$event_timestamp" != "0" ]]; then
+        echo "$event_timestamp" > "$TIMESTAMP_FILE"
+        log_action "TIMESTAMP_UPDATED: $event_timestamp"
+    fi
 }
 
-# Основная функция с улучшенным алгоритмом позиционирования
+# Основная функция с timestamp-based алгоритмом
 main() {
-    log_action "Starting failure processing..."
+    log_action "Starting failure processing (v3.0 timestamp-based)..."
     
     if [[ ! -f "$LOG_FILE" ]]; then
         log_action "Failure log file not found: $LOG_FILE"
@@ -385,64 +420,67 @@ main() {
     fi
     
     local total_lines=$(wc -l < "$LOG_FILE")
-    local last_position=$(cat "$POSITION_FILE" 2>/dev/null || echo "0")
+    local last_timestamp=$(cat "$TIMESTAMP_FILE" 2>/dev/null || echo "0")
     local current_metadata=$(get_file_metadata "$LOG_FILE")
     local saved_metadata=$(cat "$METADATA_FILE" 2>/dev/null || echo "")
-    local processed_lines=0
+    local processed_events=0
+    local newest_timestamp="$last_timestamp"
     
-    log_action "Log file has $total_lines lines, last position: $last_position"
+    log_action "Log file has $total_lines lines, last processed timestamp: $last_timestamp"
     log_action "Current metadata: $current_metadata"
     log_action "Saved metadata: $saved_metadata"
     
-    # Проверяем, был ли файл ротирован
+    # Проверяем, был ли файл ротирован (для информации)
     local file_rotated=false
     if [[ -n "$saved_metadata" ]] && is_file_rotated "$current_metadata" "$saved_metadata"; then
         file_rotated=true
-        last_position=0
-        log_action "File rotation detected, starting from beginning"
+        log_action "File rotation detected, but processing by timestamp"
     fi
     
-    # Дополнительная проверка: если позиция больше общего количества строк
-    if (( last_position > total_lines )); then
-        log_action "Position $last_position > total lines $total_lines, resetting position"
-        last_position=0
-        file_rotated=true
-    fi
-    
-    # Обрабатываем новые строки
-    if (( total_lines > last_position )); then
-        local lines_to_process=$((total_lines - last_position))
-        log_action "Processing $lines_to_process new lines (from $((last_position + 1)) to $total_lines)"
+    # Обрабатываем ВСЕ строки в файле, но отправляем только новые по timestamp
+    if (( total_lines > 0 )); then
+        log_action "Processing all $total_lines lines, filtering by timestamp > $last_timestamp"
         
-        # Если файл был ротирован и у нас много строк, лимитируем обработку
-        # чтобы не перегружать систему уведомлениями
-        if [[ "$file_rotated" == true ]] && (( lines_to_process > 50 )); then
-            log_action "File rotated with $lines_to_process lines, processing only last 50 to avoid spam"
-            last_position=$((total_lines - 50))
-            lines_to_process=50
-        fi
-        
-        # Используем tail для получения только нужных строк
-        tail -n "+$((last_position + 1))" "$LOG_FILE" | head -n "$lines_to_process" | while IFS= read -r line; do
+        while IFS= read -r line; do
             # Пропускаем пустые строки и строки без временной метки
             [[ -z "$line" || "$line" != *" "* ]] && continue
             
-            process_failure "$line"
-            ((processed_lines++))
-        done
+            # Извлекаем timestamp из строки
+            local event_timestamp=$(extract_timestamp "$line")
+            
+            # Обрабатываем только события новее последнего обработанного
+            if is_event_newer "$event_timestamp" "$last_timestamp"; then
+                process_failure "$line" "$event_timestamp"
+                ((processed_events++))
+                
+                # Обновляем самый новый timestamp
+                if (( event_timestamp > newest_timestamp )); then
+                    newest_timestamp="$event_timestamp"
+                fi
+            else
+                # Логируем пропущенные старые события (для отладки)
+                if [[ "$event_timestamp" != "0" ]]; then
+                    log_action "SKIPPED_OLD: timestamp $event_timestamp <= $last_timestamp"
+                fi
+            fi
+        done < "$LOG_FILE"
         
-        # Сохраняем новую позицию и метаданные
-        echo "$total_lines" > "$POSITION_FILE"
+        # Сохраняем метаданные и самый новый timestamp
         echo "$current_metadata" > "$METADATA_FILE"
-        log_action "Updated position to $total_lines, processed $lines_to_process new failure(s)"
+        if [[ "$newest_timestamp" != "$last_timestamp" ]]; then
+            echo "$newest_timestamp" > "$TIMESTAMP_FILE"
+            log_action "Updated newest timestamp to $newest_timestamp, processed $processed_events new event(s)"
+        else
+            log_action "No new events found (all timestamps <= $last_timestamp)"
+        fi
         
         # Если файл был ротирован, отправляем уведомление
         if [[ "$file_rotated" == true ]]; then
-            send_telegram "Лог файл был ротирован, обработаны новые события" "info"
+            send_telegram "Лог файл был ротирован, обработаны события по timestamp" "info"
         fi
     else
-        log_action "No new failures to process"
-        # Обновляем метаданные даже если нет новых строк
+        log_action "Log file is empty"
+        # Обновляем метаданные даже если файл пуст
         echo "$current_metadata" > "$METADATA_FILE"
     fi
 }
