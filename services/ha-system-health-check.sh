@@ -2,9 +2,10 @@
 
 # HA System Health Check - Полная диагностика системы мониторинга
 # Проверяет работоспособность всех компонентов Home Assistant мониторинга
+# 🚀 СУПЕР КРУТАЯ ВЕРСИЯ с расширенной диагностикой!
 
-VERSION="1.0"
-SCRIPT_NAME="HA System Health Check"
+VERSION="2.0"
+SCRIPT_NAME="HA System Health Check СУПЕР ВЕРСИЯ"
 LOG_FILE="/var/log/ha-health-check.log"
 REPORT_FILE="/tmp/ha-health-report-$(date +%Y%m%d-%H%M%S).txt"
 
@@ -71,11 +72,47 @@ check_result() {
 }
 
 # Основные проверки системы
+check_basic_system_info() {
+    print_section "Базовая информация о системе"
+    
+    # Основная информация о системе
+    check_result "Hostname" "PASS" "$(hostname)"
+    check_result "Uptime" "PASS" "$(uptime -p)"
+    check_result "Kernel" "PASS" "$(uname -r)"
+    check_result "OS" "PASS" "$(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
+    check_result "Architecture" "PASS" "$(uname -m)"
+    
+    # CPU Info
+    local cpu_model=$(cat /proc/cpuinfo | grep "model name" | head -1 | cut -d':' -f2 | xargs)
+    check_result "CPU Model" "PASS" "$cpu_model"
+    
+    # CPU Cores
+    local cpu_cores=$(nproc)
+    check_result "CPU Cores" "PASS" "$cpu_cores"
+}
+
 check_system_resources() {
     print_section "Системные ресурсы"
     
     # Проверка использования памяти
     local mem_usage=$(free | grep Mem | awk '{printf "%.1f", $3/$2 * 100.0}')
+    local mem_info=$(free -h | grep Mem:)
+    local mem_total=$(echo $mem_info | awk '{print $2}')
+    local mem_used=$(echo $mem_info | awk '{print $3}')
+    local mem_available=$(echo $mem_info | awk '{print $7}')
+    local mem_available_mb=$(free -m | awk '/Mem:/ {print $7}')
+    
+    check_result "Memory Total" "PASS" "$mem_total"
+    check_result "Memory Used" "PASS" "$mem_used"
+    
+    if [[ $mem_available_mb -lt 100 ]]; then
+        check_result "Memory Available" "FAIL" "$mem_available (критически мало!)"
+    elif [[ $mem_available_mb -lt 200 ]]; then
+        check_result "Memory Available" "WARN" "$mem_available (мало)"
+    else
+        check_result "Memory Available" "PASS" "$mem_available"
+    fi
+    
     if (( $(echo "$mem_usage > 85" | bc -l) )); then
         check_result "Использование памяти" "WARN" "Использовано ${mem_usage}% (>85%)"
     elif (( $(echo "$mem_usage > 95" | bc -l) )); then
@@ -86,6 +123,22 @@ check_system_resources() {
     
     # Проверка использования диска
     local disk_usage=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+    local disk_info=$(df -h / | tail -1)
+    local disk_size=$(echo $disk_info | awk '{print $2}')
+    local disk_used=$(echo $disk_info | awk '{print $3}')
+    local disk_available=$(echo $disk_info | awk '{print $4}')
+    
+    check_result "Disk Size" "PASS" "$disk_size"
+    check_result "Disk Used" "PASS" "$disk_used"
+    
+    if [[ "$disk_usage" -gt 90 ]]; then
+        check_result "Disk Available" "FAIL" "$disk_available (${disk_usage}% used - критически мало!)"
+    elif [[ "$disk_usage" -gt 80 ]]; then
+        check_result "Disk Available" "WARN" "$disk_available (${disk_usage}% used - мало)"
+    else
+        check_result "Disk Available" "PASS" "$disk_available (${disk_usage}% used)"
+    fi
+    
     if [[ "$disk_usage" -gt 85 ]]; then
         check_result "Использование диска /" "WARN" "Использовано ${disk_usage}% (>85%)"
     elif [[ "$disk_usage" -gt 95 ]]; then
@@ -99,6 +152,12 @@ check_system_resources() {
     local cpu_cores=$(nproc)
     local load_ratio=$(echo "scale=2; $load_avg / $cpu_cores" | bc)
     
+    if (( $(echo "$load_avg > 2.0" | bc -l) )); then
+        check_result "Load Average" "WARN" "$load_avg (высокая нагрузка)"
+    else
+        check_result "Load Average" "PASS" "$load_avg"
+    fi
+    
     if (( $(echo "$load_ratio > 1.5" | bc -l) )); then
         check_result "Загрузка системы" "WARN" "Load Average: $load_avg (${load_ratio}x от количества ядер)"
     elif (( $(echo "$load_ratio > 2.0" | bc -l) )); then
@@ -108,7 +167,16 @@ check_system_resources() {
     fi
     
     # Проверка температуры (для Raspberry Pi)
-    if command -v vcgencmd >/dev/null 2>&1; then
+    if [[ -f /sys/class/thermal/thermal_zone0/temp ]]; then
+        local temp=$(cat /sys/class/thermal/thermal_zone0/temp | awk '{print $1/1000}')
+        if (( $(echo "$temp > 70" | bc -l) )); then
+            check_result "Temperature" "WARN" "${temp}°C (высокая!)"
+        elif (( $(echo "$temp > 60" | bc -l) )); then
+            check_result "Temperature" "WARN" "${temp}°C (повышенная)"
+        else
+            check_result "Temperature" "PASS" "${temp}°C"
+        fi
+    elif command -v vcgencmd >/dev/null 2>&1; then
         local temp=$(vcgencmd measure_temp | cut -d= -f2 | cut -d"'" -f1)
         if (( $(echo "$temp > 70" | bc -l) )); then
             check_result "Температура CPU" "WARN" "Температура: ${temp}°C (>70°C)"
@@ -129,34 +197,70 @@ check_system_resources() {
 check_network_connectivity() {
     print_section "Сетевое подключение"
     
-    # Проверка интернет-соединения
-    if ping -c 1 -W 5 8.8.8.8 >/dev/null 2>&1; then
-        check_result "Интернет соединение" "PASS" "Пинг до 8.8.8.8 успешен"
+    # Проверка сетевых интерфейсов
+    local interfaces=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo)
+    check_result "Network Interfaces" "PASS" "$interfaces"
+    
+    # Check specific interface status
+    if ip link show wlan0 &>/dev/null; then
+        if ip link show wlan0 | grep -q "state UP"; then
+            check_result "WiFi (wlan0)" "PASS" "UP"
+        else
+            check_result "WiFi (wlan0)" "FAIL" "DOWN"
+        fi
+    fi
+    
+    if ip link show eth0 &>/dev/null; then
+        if ip link show eth0 | grep -q "state UP"; then
+            check_result "Ethernet (eth0)" "PASS" "UP"
+        else
+            check_result "Ethernet (eth0)" "WARN" "DOWN"
+        fi
+    fi
+    
+    # IP addresses
+    local ips=$(ip addr show | grep -E "inet.*global" | awk '{print $2, $NF}')
+    if [[ -n "$ips" ]]; then
+        check_result "IP Addresses" "PASS" "Найдены активные IP"
+        echo "$ips" | while read line; do
+            echo -e "         $line"
+        done
+    fi
+    
+    # Проверка активных интерфейсов
+    local active_interfaces=$(ip link show | grep "state UP" | awk -F: '{print $2}' | tr -d ' ')
+    if [[ -n "$active_interfaces" ]]; then
+        check_result "Сетевые интерфейсы" "PASS" "Активные: $(echo $active_interfaces | tr '\n' ' ')"
     else
-        check_result "Интернет соединение" "FAIL" "Нет доступа в интернет"
+        check_result "Сетевые интерфейсы" "FAIL" "Нет активных интерфейсов"
     fi
     
     # Проверка локального шлюза
     local gateway=$(ip route | grep default | awk '{print $3}' | head -1)
     if [[ -n "$gateway" ]] && ping -c 1 -W 3 "$gateway" >/dev/null 2>&1; then
         check_result "Локальный шлюз" "PASS" "Пинг до $gateway успешен"
+        check_result "Gateway" "PASS" "$gateway - Reachable"
     else
         check_result "Локальный шлюз" "FAIL" "Нет доступа к шлюзу $gateway"
+        check_result "Gateway" "FAIL" "$gateway - Unreachable"
+    fi
+    
+    # Проверка интернет-соединения
+    if ping -c 1 -W 5 8.8.8.8 >/dev/null 2>&1; then
+        check_result "Интернет соединение" "PASS" "Пинг до 8.8.8.8 успешен"
+        check_result "Internet" "PASS" "Available"
+    else
+        check_result "Интернет соединение" "FAIL" "Нет доступа в интернет"
+        check_result "Internet" "FAIL" "Unavailable"
     fi
     
     # Проверка DNS
     if nslookup google.com >/dev/null 2>&1; then
         check_result "DNS разрешение" "PASS" "DNS работает"
+        check_result "DNS" "PASS" "Working"
     else
         check_result "DNS разрешение" "FAIL" "DNS не работает"
-    fi
-    
-    # Проверка сетевых интерфейсов
-    local interfaces=$(ip link show | grep "state UP" | awk -F: '{print $2}' | tr -d ' ')
-    if [[ -n "$interfaces" ]]; then
-        check_result "Сетевые интерфейсы" "PASS" "Активные: $(echo $interfaces | tr '\n' ' ')"
-    else
-        check_result "Сетевые интерфейсы" "FAIL" "Нет активных интерфейсов"
+        check_result "DNS" "FAIL" "Issues detected"
     fi
 }
 
@@ -164,18 +268,45 @@ check_docker_services() {
     print_section "Docker и контейнеры"
     
     # Проверка Docker daemon
+    if ! command -v docker >/dev/null 2>&1; then
+        check_result "Docker" "FAIL" "Not installed"
+        return
+    fi
+    
+    check_result "Docker Version" "PASS" "$(docker --version)"
+    
     if systemctl is-active docker >/dev/null 2>&1; then
         check_result "Docker daemon" "PASS" "Служба активна"
+        check_result "Docker Daemon" "PASS" "Running"
     else
         check_result "Docker daemon" "FAIL" "Служба не активна"
+        check_result "Docker Daemon" "FAIL" "Not running"
+        return
+    fi
+    
+    # Docker info
+    if docker info >/dev/null 2>&1; then
+        check_result "Docker Info" "PASS" "Accessible"
+    else
+        check_result "Docker Info" "FAIL" "Cannot access daemon"
         return
     fi
     
     # Проверка docker-compose файла
     if [[ -f "/srv/home/docker-compose.yml" ]]; then
         check_result "Docker Compose файл" "PASS" "Файл найден: /srv/home/docker-compose.yml"
+        check_result "Docker Compose Configuration" "PASS" "Found"
+        
+        # Проверка docker compose команд
+        cd /srv/home 2>/dev/null
+        if docker compose ps >/dev/null 2>&1; then
+            check_result "Docker Compose" "PASS" "Working"
+        else
+            check_result "Docker Compose" "WARN" "Issues detected"
+        fi
     else
         check_result "Docker Compose файл" "FAIL" "Файл не найден: /srv/home/docker-compose.yml"
+        check_result "Docker Compose Configuration" "FAIL" "Not found"
     fi
     
     # Проверка контейнеров
@@ -199,7 +330,19 @@ check_docker_services() {
             local status=$(docker ps --format "{{.Names}}\t{{.Status}}" | grep "^${service}" | cut -f2)
             check_result "Контейнер $service" "PASS" "$status"
         else
-            check_result "Контейнер $service" "WARN" "Контейнер не запущен"
+            # Проверяем docker inspect для более детальной информации
+            if docker inspect "$service" >/dev/null 2>&1; then
+                local container_status=$(docker inspect -f '{{.State.Status}}' "$service")
+                local running=$(docker inspect -f '{{.State.Running}}' "$service")
+                
+                if [[ "$running" == "true" ]]; then
+                    check_result "Контейнер $service" "PASS" "Running"
+                else
+                    check_result "Контейнер $service" "FAIL" "$container_status"
+                fi
+            else
+                check_result "Контейнер $service" "WARN" "Контейнер не запущен"
+            fi
         fi
     done
 }
@@ -305,6 +448,92 @@ check_log_files() {
     done
 }
 
+check_tailscale_vpn() {
+    print_section "Tailscale VPN"
+    
+    if ! command -v tailscale >/dev/null 2>&1; then
+        check_result "Tailscale" "WARN" "Not installed"
+        return
+    fi
+    
+    check_result "Tailscale Version" "PASS" "$(tailscale version | head -1)"
+    
+    # Tailscale daemon status
+    if systemctl is-active tailscaled >/dev/null 2>&1; then
+        check_result "Tailscaled Daemon" "PASS" "Running"
+    else
+        check_result "Tailscaled Daemon" "FAIL" "Not running"
+        return
+    fi
+    
+    # Tailscale status
+    local ts_status=$(tailscale status --json 2>/dev/null)
+    if [[ $? -eq 0 ]]; then
+        local backend_state=$(echo "$ts_status" | jq -r '.BackendState' 2>/dev/null)
+        case "$backend_state" in
+            "Running")
+                check_result "Tailscale Status" "PASS" "Connected"
+                ;;
+            "NeedsLogin")
+                check_result "Tailscale Status" "WARN" "Needs authentication"
+                ;;
+            "NoState"|"Stopped")
+                check_result "Tailscale Status" "FAIL" "Not connected"
+                ;;
+            *)
+                check_result "Tailscale Status" "WARN" "$backend_state"
+                ;;
+        esac
+        
+        # Get current node info
+        local self_info=$(echo "$ts_status" | jq -r '.Self // empty' 2>/dev/null)
+        if [[ -n "$self_info" ]] && [[ "$self_info" != "null" ]]; then
+            local hostname=$(echo "$self_info" | jq -r '.HostName // "unknown"' 2>/dev/null)
+            local tailscale_ip=$(echo "$self_info" | jq -r '.TailscaleIPs[0] // "unknown"' 2>/dev/null)
+            local online=$(echo "$self_info" | jq -r '.Online // false' 2>/dev/null)
+            
+            check_result "Tailscale Hostname" "PASS" "$hostname"
+            check_result "Tailscale IP" "PASS" "$tailscale_ip"
+            
+            if [[ "$online" == "true" ]]; then
+                check_result "Node Status" "PASS" "Online"
+            else
+                check_result "Node Status" "WARN" "Offline"
+            fi
+            
+            # Check if Home Assistant is accessible via Tailscale
+            if [[ -n "$tailscale_ip" ]] && [[ "$tailscale_ip" != "unknown" ]]; then
+                if timeout 3 bash -c "</dev/tcp/$tailscale_ip/8123" 2>/dev/null; then
+                    check_result "HA via Tailscale" "PASS" "$tailscale_ip:8123 - Accessible"
+                else
+                    check_result "HA via Tailscale" "WARN" "$tailscale_ip:8123 - Not accessible"
+                fi
+            fi
+        fi
+        
+        # Count peers
+        local peer_count=$(echo "$ts_status" | jq '.Peer | length' 2>/dev/null)
+        if [[ -n "$peer_count" ]] && [[ "$peer_count" != "null" ]]; then
+            check_result "Connected Peers" "PASS" "$peer_count"
+        fi
+    else
+        check_result "Tailscale Status" "WARN" "Cannot retrieve status"
+    fi
+    
+    # Check Tailscale services
+    if systemctl is-active tailscale-serve-ha >/dev/null 2>&1; then
+        check_result "Tailscale Serve HA" "PASS" "Active"
+    else
+        check_result "Tailscale Serve HA" "WARN" "Inactive"
+    fi
+    
+    if systemctl is-active tailscale-funnel-ha >/dev/null 2>&1; then
+        check_result "Tailscale Funnel HA" "PASS" "Active"
+    else
+        check_result "Tailscale Funnel HA" "WARN" "Inactive"
+    fi
+}
+
 check_ha_services_availability() {
     print_section "Доступность HA сервисов"
     
@@ -396,6 +625,31 @@ check_system_security() {
         check_result "SSH сервис" "WARN" "SSH сервис неактивен"
     fi
     
+    # SSH configuration
+    if [[ -f /etc/ssh/sshd_config ]]; then
+        local ssh_port=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}')
+        if [[ -n "$ssh_port" && "$ssh_port" != "22" ]]; then
+            check_result "SSH Port" "PASS" "Changed ($ssh_port)"
+        else
+            check_result "SSH Port" "WARN" "Default (22)"
+        fi
+        
+        if grep -q "PasswordAuthentication no" /etc/ssh/sshd_config; then
+            check_result "SSH Password Auth" "PASS" "Disabled"
+        else
+            check_result "SSH Password Auth" "WARN" "Enabled"
+        fi
+        
+        if grep -q "PermitRootLogin" /etc/ssh/sshd_config; then
+            local root_login=$(grep "PermitRootLogin" /etc/ssh/sshd_config | awk '{print $2}')
+            if [[ "$root_login" == "yes" ]]; then
+                check_result "SSH Root Login" "WARN" "Enabled"
+            else
+                check_result "SSH Root Login" "PASS" "$root_login"
+            fi
+        fi
+    fi
+    
     # Проверка firewall
     if command -v ufw >/dev/null 2>&1; then
         local ufw_status=$(ufw status | head -1)
@@ -404,6 +658,8 @@ check_system_security() {
         else
             check_result "Firewall (UFW)" "WARN" "Неактивен"
         fi
+    else
+        check_result "Firewall (UFW)" "WARN" "Not installed"
     fi
     
     # Проверка fail2ban
@@ -411,6 +667,16 @@ check_system_security() {
         check_result "Fail2ban" "PASS" "Сервис активен"
     else
         check_result "Fail2ban" "WARN" "Сервис неактивен"
+    fi
+    
+    # File permissions for monitoring configs
+    if [[ -f /etc/ha-watchdog/config ]]; then
+        local perms=$(stat -c %a /etc/ha-watchdog/config)
+        if [[ "$perms" == "600" ]] || [[ "$perms" == "640" ]]; then
+            check_result "Config File Permissions" "PASS" "Secure ($perms)"
+        else
+            check_result "Config File Permissions" "WARN" "Insecure ($perms)"
+        fi
     fi
     
     # Проверка обновлений безопасности
@@ -493,9 +759,11 @@ main() {
     } > "$REPORT_FILE"
     
     # Выполняем все проверки
+    check_basic_system_info
     check_system_resources
     check_network_connectivity
     check_docker_services
+    check_tailscale_vpn
     check_ha_monitoring_services
     check_log_files
     check_ha_services_availability
@@ -524,6 +792,11 @@ check_dependencies() {
             missing_tools+=("$tool")
         fi
     done
+    
+    # Предупреждение о необязательных утилитах
+    if ! command -v jq >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  Внимание: утилита 'jq' не найдена. Проверка Tailscale будет ограничена.${NC}"
+    fi
     
     if [[ ${#missing_tools[@]} -gt 0 ]]; then
         echo -e "${RED}Предупреждение: Следующие утилиты не найдены:${NC}"

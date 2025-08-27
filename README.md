@@ -279,35 +279,63 @@ ssh rpi "docker ps"
 ssh rpi "vcgencmd measure_temp && free -h"
 ```
 
-## 🩺 System Health Diagnostics
+## 🩺 System Health Diagnostics - СУПЕР ВЕРСИЯ
 
 ### **Quick Health Check Commands**
 
-The system includes a comprehensive diagnostic tool accessible via simple SSH commands:
+The system includes a **СУПЕР comprehensive diagnostic tool** with **79 checks** accessible via simple SSH commands:
 
 ```bash
-# Full system diagnostics (37 checks)
+# Full system diagnostics (79 checks) - СУПЕР ВЕРСИЯ
 ssh rpi-vpn health-check
 
 # Quick essential checks
 ssh rpi-vpn health-quick
 
-# Real-time monitoring (updates every 30s)
-ssh rpi-vpn health-monitor
+# Quiet mode (errors only)
+ssh rpi-vpn health-check --quiet
+
+# Verbose mode with debugging
+ssh rpi-vpn health-check --verbose
 
 # View available options
 ssh rpi-vpn "health-check --help"
 ```
 
-### **Diagnostic Coverage**
+### **СУПЕР Diagnostic Coverage (79 checks total)**
 
-**System Resources (4 checks)**
-- Memory usage, disk space, CPU load, temperature monitoring
+**🖥️ Basic System Info (6 checks)**
+- Hostname, Uptime, Kernel, OS, Architecture, CPU Model
 
-**Network Connectivity (4 checks)**  
-- Internet access, gateway reachability, DNS resolution, active interfaces
+**💾 System Resources (8 checks)**
+- Memory usage (total/used/available), disk space, CPU load, temperature monitoring
 
-**Docker Services (6+ checks)**
+**🌐 Extended Network Diagnostics (11 checks)**  
+- Internet access, gateway, DNS, network interfaces, WiFi/Ethernet status, IP addresses
+
+**🐳 Docker Services (12+ checks)**
+- Docker daemon, version, info, containers, compose configuration
+
+**🔗 Tailscale VPN Diagnostics (8+ checks)**
+- Daemon status, connection, node info, peers, HA accessibility via VPN
+
+**🔍 HA Monitoring Services (12+ checks)**
+- Systemd services, timers, scripts, configuration validation
+
+**📊 Log Analysis (6+ checks)**
+- Log files, sizes, recent entries, state files
+
+**🚪 Service Availability (4+ checks)**
+- HA, Node-RED, Portainer, Zigbee2MQTT port checks
+
+**📈 Recent Failures Analysis (4+ checks)**
+- Failure logs, notification statistics, throttling status
+
+**🔒 Enhanced Security (8+ checks)**
+- SSH configuration, firewall, fail2ban, file permissions, security updates
+
+**⚡ Performance Testing (2+ checks)**
+- Disk write speed, memory stress test
 - Docker daemon, container status, compose file validation, specific containers
 
 **HA Monitoring Services (6+ checks)**
