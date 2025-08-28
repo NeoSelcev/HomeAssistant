@@ -202,17 +202,25 @@ check_network_connectivity() {
     check_result "Network Interfaces" "PASS" "$interfaces"
     
     # Check specific interface status
+    local eth_up=false
     if ip link show wlan0 &>/dev/null; then
         if ip link show wlan0 | grep -q "state UP"; then
             check_result "WiFi (wlan0)" "PASS" "UP"
         else
-            check_result "WiFi (wlan0)" "FAIL" "DOWN"
+            # Проверяем, работает ли Ethernet
+            if ip link show eth0 &>/dev/null && ip link show eth0 | grep -q "state UP"; then
+                check_result "WiFi (wlan0)" "WARN" "DOWN (но Ethernet активен)"
+                eth_up=true
+            else
+                check_result "WiFi (wlan0)" "FAIL" "DOWN"
+            fi
         fi
     fi
     
     if ip link show eth0 &>/dev/null; then
         if ip link show eth0 | grep -q "state UP"; then
             check_result "Ethernet (eth0)" "PASS" "UP"
+            eth_up=true
         else
             check_result "Ethernet (eth0)" "WARN" "DOWN"
         fi
@@ -255,7 +263,7 @@ check_network_connectivity() {
     fi
     
     # Проверка DNS
-    if nslookup google.com >/dev/null 2>&1; then
+    if getent hosts google.com >/dev/null 2>&1; then
         check_result "DNS разрешение" "PASS" "DNS работает"
         check_result "DNS" "PASS" "Working"
     else
@@ -350,18 +358,11 @@ check_docker_services() {
 check_ha_monitoring_services() {
     print_section "HA мониторинг сервисы"
     
-    # Проверка systemd сервисов
+    # Проверка systemd таймеров (правильная проверка для сервисов по расписанию)
     local services=("ha-watchdog" "ha-failure-notifier")
     
     for service in "${services[@]}"; do
-        if systemctl is-active "${service}.service" >/dev/null 2>&1; then
-            local status=$(systemctl show "${service}.service" --property=SubState --value)
-            check_result "Сервис $service" "PASS" "Статус: $status"
-        else
-            check_result "Сервис $service" "FAIL" "Сервис не активен"
-        fi
-        
-        # Проверка timer'ов
+        # Проверяем таймеры (главное для сервисов по расписанию)
         if systemctl is-active "${service}.timer" >/dev/null 2>&1; then
             local next_run=$(systemctl show "${service}.timer" --property=NextElapseUSecRealtime --value)
             if [[ "$next_run" != "0" ]]; then
@@ -371,6 +372,13 @@ check_ha_monitoring_services() {
             fi
         else
             check_result "Timer $service" "FAIL" "Timer не найден"
+        fi
+        
+        # Проверка сервисов - для таймерных сервисов это менее важно
+        if systemctl is-enabled "${service}.service" >/dev/null 2>&1; then
+            check_result "Сервис $service" "PASS" "Включен (запускается по таймеру)"
+        else
+            check_result "Сервис $service" "WARN" "Сервис не включен"
         fi
     done
     
