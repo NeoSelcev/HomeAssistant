@@ -130,6 +130,66 @@ echo "📦 Установка зависимостей..."
 apt update
 apt install -y bc curl jq wireless-tools dos2unix htop
 
+# Устанавливаем компоненты безопасности
+echo "🛡️ Установка компонентов безопасности..."
+apt install -y ufw fail2ban stress-ng
+
+echo "🔥 Настройка UFW Firewall..."
+# Настройка UFW
+ufw --force reset >/dev/null 2>&1 || true
+ufw default deny incoming
+ufw default allow outgoing
+
+# Разрешаем доступ только для локальной сети и Tailscale
+ufw allow from 192.168.1.0/24 to any port 22 comment 'SSH - Local Network'
+ufw allow from 100.64.0.0/10 to any port 22 comment 'SSH - Tailscale VPN'
+ufw allow from 192.168.1.0/24 to any port 8123 comment 'Home Assistant - Local Network'
+ufw allow from 100.64.0.0/10 to any port 8123 comment 'Home Assistant - Tailscale VPN'
+ufw allow from 192.168.1.0/24 to any port 1880 comment 'Node-RED - Local Network'
+ufw allow from 100.64.0.0/10 to any port 1880 comment 'Node-RED - Tailscale VPN'
+
+# Включаем firewall
+ufw --force enable
+echo "✅ UFW Firewall настроен и активирован"
+
+echo "🚫 Настройка Fail2ban..."
+# Настройка Fail2ban
+cat > /etc/fail2ban/jail.local << 'EOF'
+[DEFAULT]
+bantime = 3600
+findtime = 600
+maxretry = 3
+
+[sshd]
+enabled = true
+filter = sshd
+backend = systemd
+maxretry = 3
+bantime = 3600
+EOF
+
+systemctl enable fail2ban
+systemctl restart fail2ban
+echo "✅ Fail2ban настроен и активирован"
+
+# Мониторинг SSH
+-w /var/log/auth.log -p wa -k auth
+-w /etc/ssh/sshd_config -p wa -k ssh
+
+# Мониторинг Home Assistant
+-w /opt/homeassistant -p wa -k homeassistant
+-w /etc/systemd/system/homeassistant.service -p wa -k homeassistant
+
+# Мониторинг firewall
+-w /etc/ufw -p wa -k firewall
+EOF
+
+echo "📋 Настройка Logrotate для системы безопасности..."
+# Копируем конфигурации logrotate
+cp "${SCRIPT_DIR}/logrotate/fail2ban" /etc/logrotate.d/
+cp "${SCRIPT_DIR}/logrotate/ufw" /etc/logrotate.d/
+echo "✅ Logrotate настроен для fail2ban и ufw"
+
 # Копируем скрипты
 echo "📋 Установка скриптов..."
 cp monitoring/ha-watchdog/ha-watchdog.sh /usr/local/bin/ha-watchdog.sh
@@ -468,7 +528,8 @@ echo "   cd /opt/homeassistant && docker-compose logs   - логи контей�
 echo "   cd /opt/homeassistant && docker-compose restart - перезапуск контейнеров"
 echo ""
 echo "🔍 Диагностика системы:"
-echo "   system-diagnostic.sh    - полная диагностика системы"
+echo "   ha-system-health-check.sh   - комплексная диагностика (79 проверок)"
+echo "   system-diagnostic.sh        - полная диагностика системы"
 echo ""
 echo "📍 Файлы логов:"
 echo "   /var/log/ha-watchdog.log    - лог проверок"

@@ -145,7 +145,7 @@ timestamp:priority:message_type
 
 ### Telegram Integration
 **Notification Categories:**
-- 🔴 Critical: System failures, high temperature (>70°C)
+- 🔴 Critical: System failures, high temperature (>75°C)
 - 🟠 Important: Container failures, network issues  
 - 🟡 Warning: High system load, slow network
 - 🟢 Info: Service recovery, successful restarts
@@ -175,19 +175,50 @@ timestamp:priority:message_type
 
 ### SSH Hardening
 - Key-based authentication only
-- Custom port (22)
+- Custom port (22) - standard port with firewall protection
 - Root login via keys
-- Fail2ban protection
+- Password authentication disabled
+- Fail2ban protection enabled
+
+### Firewall Protection (UFW)
+- **Status**: Active and enabled on system startup
+- **Default Policy**: Deny incoming, allow outgoing
+- **Allowed Access**:
+  - SSH (22): Local network (192.168.1.0/24) + Tailscale VPN (100.64.0.0/10)
+  - Home Assistant (8123): Local network + Tailscale VPN only
+  - Node-RED (1880): Local network + Tailscale VPN only
+- **Blocked**: All internet access to services
+- **Configuration**: `/etc/ufw/user.rules`
+
+### Intrusion Detection (Fail2ban)
+- **Service**: `fail2ban.service` - active protection
+- **SSH Protection**: Monitors `/var/log/auth.log`
+- **Policy**: 3 failed attempts = 1 hour IP ban
+- **Configuration**: `/etc/fail2ban/jail.local`
+- **Status Check**: `fail2ban-client status sshd`
+- **Log Rotation**: Daily rotation, 52 weeks retention (`/etc/logrotate.d/fail2ban`)
+
+### UFW Firewall Logs
+- **UFW Logs**: `/var/log/ufw.log`
+- **Log Rotation**: Daily rotation, 30 days retention (`/etc/logrotate.d/ufw`)
 
 ### Container Security  
 - Host network mode for HA discovery
 - Volume mounts with restricted permissions
 - Regular image updates via watchtower
+- UFW firewall controls container port access
 
 ### Network Security
-- Firewall rules (ufw)
-- VPN-only external access
-- Regular security updates
+- UFW firewall rules (active)
+- Tailscale VPN-only external access
+- Regular security updates monitoring
+- Performance testing with stress-ng
+
+### Security Monitoring
+- **File Permissions**: Configuration files secured (600)
+- **Security Updates**: Monitored via `apt list --upgradable`
+- **SSH Attempts**: Tracked by fail2ban and health diagnostics
+- **Firewall Status**: Monitored in system health checks
 
 ---
 *Updated: 2025-08-21 - Smart Home Network Documentation*
@@ -232,15 +263,29 @@ timestamp:priority:message_type
 
 #### ha-system-health-check.sh v1.0
 - **Purpose**: Comprehensive system diagnostics and health reporting
-- **Location**: `/usr/local/bin/ha-health-check`
+- **Location**: `/usr/local/bin/ha-system-health-check.sh`
 - **Quick Commands**: `health-check`, `health-quick`, `health-monitor`
 - **Features**:
-  - **37 comprehensive checks** across system resources, network, services, security
+  - **79 comprehensive checks** (upgraded from 37) across all system components
   - **Color-coded output** - ✓ PASS (green), ✗ FAIL (red), ⚠ WARN (yellow)
   - **Statistical reporting** - percentage scores and health assessment
-  - **Port checking** - uses bash `/dev/tcp` (no external dependencies like netcat)
-  - **Real-time monitoring** mode with 30-second refresh intervals
+  - **Port checking** - uses bash `/dev/tcp` (no external dependencies)
+  - **Performance testing** - stress-ng integration for CPU/memory tests
   - **Detailed reports** saved to `/tmp/ha-health-report-YYYYMMDD-HHMMSS.txt`
+- **Enhanced Check Categories**:
+  - **Basic System Info** (6 checks): Hostname, uptime, kernel, OS, architecture, CPU model
+  - **System Resources** (8 checks): Memory (detailed), disk space, CPU load, temperature (75°C threshold)
+  - **Extended Network** (11 checks): Internet, gateway, DNS, interfaces, WiFi/Ethernet status, IP addresses
+  - **Docker Services** (12+ checks): Daemon, version, info, containers, compose configuration
+  - **Tailscale VPN** (8+ checks): Daemon status, connection, node info, peers, HA accessibility (via `tailscale serve status`)
+  - **HA Monitoring** (12+ checks): Systemd timers (not services!), scripts, configuration validation
+  - **Log Analysis** (6+ checks): File sizes, recent entries, state files, rotation status
+  - **Service Availability** (4+ checks): Port checks for HA, Node-RED, Portainer, Zigbee2MQTT
+  - **Recent Failures** (4+ checks): Failure logs, notification stats, throttling status
+  - **Enhanced Security** (8+ checks): SSH config, UFW firewall, fail2ban, file permissions, security updates
+  - **Performance Testing** (2+ checks): Stress-ng memory test, disk write speed validation
+  - **Performance Testing** (2+ checks): Disk write speed, memory stress test (stress-ng)
+- **Latest Performance**: 66/79 checks passed (83%), 12 warnings, 1 error
 - **Check Categories**:
   - System Resources: memory, disk, CPU load, temperature
   - Network: internet, gateway, DNS, interface status  
@@ -573,8 +618,12 @@ WantedBy=multi-user.target
 **Конфигурации установлены:**
 
 - `/etc/logrotate.d/ha-monitoring` - для логов системы мониторинга
-- `/etc/logrotate.d/homeassistant` - для логов Home Assistant  
+- `/etc/logrotate.d/homeassistant` - для логов Home Assistant
+- `/etc/logrotate.d/fail2ban` - для логов Fail2ban (52 недели)  
+- `/etc/logrotate.d/ufw` - для логов UFW Firewall (30 дней)
 - `/etc/systemd/journald.conf` - ограничения systemd journal (500MB)
+
+**Примечание о SSH логах:** SSH использует systemd journald, поэтому отдельная логротация не требуется - логи автоматически ротируются через системный журнал.
 
 **Параметры ротации:**
 

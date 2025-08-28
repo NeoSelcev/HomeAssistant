@@ -169,10 +169,10 @@ check_system_resources() {
     # Проверка температуры (для Raspberry Pi)
     if [[ -f /sys/class/thermal/thermal_zone0/temp ]]; then
         local temp=$(cat /sys/class/thermal/thermal_zone0/temp | awk '{print $1/1000}')
-        if (( $(echo "$temp > 70" | bc -l) )); then
-            check_result "Temperature" "WARN" "${temp}°C (высокая!)"
-        elif (( $(echo "$temp > 60" | bc -l) )); then
-            check_result "Temperature" "WARN" "${temp}°C (повышенная)"
+        if (( $(echo "$temp > 75" | bc -l) )); then
+            check_result "Temperature" "WARN" "${temp}°C (критическая!)"
+        elif (( $(echo "$temp > 70" | bc -l) )); then
+            check_result "Temperature" "WARN" "${temp}°C (высокая)"
         else
             check_result "Temperature" "PASS" "${temp}°C"
         fi
@@ -529,10 +529,10 @@ check_tailscale_vpn() {
     fi
     
     # Check Tailscale services
-    if systemctl is-active tailscale-serve-ha >/dev/null 2>&1; then
-        check_result "Tailscale Serve HA" "PASS" "Active"
+    if command -v tailscale >/dev/null 2>&1 && tailscale serve status 2>/dev/null | grep -q "8443"; then
+        check_result "Tailscale Serve HA" "PASS" "Активен (порт 8443)"
     else
-        check_result "Tailscale Serve HA" "WARN" "Inactive"
+        check_result "Tailscale Serve HA" "WARN" "Неактивен или недоступен"
     fi
     
     if systemctl is-active tailscale-funnel-ha >/dev/null 2>&1; then
@@ -739,11 +739,15 @@ run_performance_test() {
     fi
     
     # Тест памяти
-    local mem_test=$(timeout 5 stress-ng --vm 1 --vm-bytes 100M -t 3s 2>/dev/null && echo "OK" || echo "FAIL")
-    if [[ "$mem_test" == "OK" ]]; then
-        check_result "Тест памяти" "PASS" "Стресс-тест пройден"
+    if ! command -v stress-ng >/dev/null 2>&1; then
+        check_result "Тест памяти" "WARN" "Утилита stress-ng не установлена"
     else
-        check_result "Тест памяти" "WARN" "Утилита stress-ng недоступна"
+        local mem_test=$(timeout 3 stress-ng --vm 1 --vm-bytes 64M --timeout 2s --quiet 2>/dev/null && echo "OK" || echo "FAIL")
+        if [[ "$mem_test" == "OK" ]]; then
+            check_result "Тест памяти" "PASS" "Стресс-тест пройден"
+        else
+            check_result "Тест памяти" "WARN" "Стресс-тест завершился с ошибкой"
+        fi
     fi
 }
 

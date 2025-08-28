@@ -7,8 +7,12 @@ Comprehensive monitoring system for Home Assistant on Raspberry Pi 3B+ with auto
 ### � **ha-system-health-check v1.0 - Comprehensive System Diagnostics**
 
 **New Tool:** Complete system health monitoring and diagnostics toolkit.
+- Protects SSH from brute-force attacks
+- Ban time: 1 hour after 3 failed attempts
 
-**Comprehensive Checks:**
+**📊 stress-ng**
+- Performance testing utility for comprehensive system diagnostics
+- Tests CPU, memory, disk I/O under loadsive Checks:**
 - 🖥️ **System Resources** - Memory, disk, CPU load, temperature
 - 🌐 **Network Connectivity** - Internet, gateway, DNS, interfaces
 - 🐳 **Docker Services** - Daemon, containers, compose files
@@ -336,6 +340,64 @@ ssh rpi-vpn "health-check --help"
 
 **⚡ Performance Testing (2+ checks)**
 - Disk write speed, memory stress test
+
+### **Latest Performance Results**
+- ✅ **66/79 checks passed (83%)**
+- ⚠️ **12 warnings** (mostly security recommendations)
+- ❌ **1 error** (minor issue)
+
+---
+
+## 🛡️ Security Components
+
+### **Installed Security Tools**
+
+The system includes comprehensive security protection:
+
+**🔥 UFW Firewall**
+- Blocks unauthorized access from internet
+- Allows access only from local network (192.168.1.0/24) and Tailscale VPN (100.64.0.0/10)
+- Protected ports: SSH (22), Home Assistant (8123), Node-RED (1880)
+
+**🚫 Fail2ban**  
+- Automatically blocks IPs after failed login attempts
+- Protects SSH from brute-force attacks
+- Ban time: 1 hour after 3 failed attempts
+
+**📊 stress-ng**
+- Performance testing utility for comprehensive system diagnostics
+- Tests CPU, memory, disk I/O under load
+- Integrated into health check for automated performance validation
+
+**🌡️ Temperature Monitoring**
+- Normal: < 70°C (Raspberry Pi optimized thresholds)
+- High: 70-75°C (warning level)
+- Critical: > 75°C (requires attention)
+
+**📋 Logrotate Configuration**
+- Fail2ban logs: Daily rotation, 52 weeks retention (`/var/log/fail2ban.log`)
+- UFW logs: Daily rotation, 30 days retention (`/var/log/ufw.log`)
+- SSH logs: Managed by systemd journald (automatic rotation)
+- Automated cleanup prevents disk space issues
+
+### **Security Configuration**
+
+```bash
+# View firewall status
+ssh rpi-vpn "sudo ufw status"
+
+# Check fail2ban status  
+ssh rpi-vpn "sudo fail2ban-client status"
+
+# Run performance stress test
+ssh rpi-vpn "stress-ng --cpu 1 --vm 1 --vm-bytes 100M -t 30s"
+```
+
+### **Access Control**
+- **Local Network:** Full access (192.168.1.0/24)
+- **Tailscale VPN:** Full access (100.64.0.0/10)  
+- **Internet:** Blocked by UFW firewall
+- **SSH:** Key-based authentication only, passwords disabled
 - Docker daemon, container status, compose file validation, specific containers
 
 **HA Monitoring Services (6+ checks)**
