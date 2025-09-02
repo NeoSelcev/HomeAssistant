@@ -341,6 +341,126 @@ check_monitoring() {
     else
         log_check "INFO" "Failures Log: Not found"
     fi
+
+    # Telegram Sender Service (NEW - September 2025)
+    log_check "INFO" "--- Telegram Sender Service ---"
+    
+    if [[ -f /usr/local/bin/telegram-sender.sh ]]; then
+        log_check "OK" "Telegram Sender: Installed"
+        
+        # Test if executable
+        if [[ -x /usr/local/bin/telegram-sender.sh ]]; then
+            log_check "OK" "Telegram Sender: Executable"
+        else
+            log_check "WARNING" "Telegram Sender: Not executable"
+        fi
+    else
+        log_check "WARNING" "Telegram Sender: Not installed"
+    fi
+    
+    # Configuration check
+    if [[ -f /etc/telegram-sender/config ]]; then
+        log_check "OK" "Telegram Config: Found (/etc/telegram-sender/config)"
+        
+        # Check permissions
+        local perms=$(stat -c%a /etc/telegram-sender/config 2>/dev/null)
+        if [[ "$perms" == "600" ]]; then
+            log_check "OK" "Telegram Config: Secure permissions (600)"
+        else
+            log_check "WARNING" "Telegram Config: Insecure permissions ($perms, should be 600)"
+        fi
+        
+        # Check configuration content
+        if grep -q "TELEGRAM_BOT_TOKEN=" /etc/telegram-sender/config 2>/dev/null; then
+            if grep -q "your_bot_token_here" /etc/telegram-sender/config 2>/dev/null; then
+                log_check "WARNING" "Telegram Config: Default token not changed"
+            else
+                log_check "OK" "Telegram Config: Bot token configured"
+            fi
+        else
+            log_check "ERROR" "Telegram Config: Bot token missing"
+        fi
+        
+        if grep -q "TELEGRAM_CHAT_ID=" /etc/telegram-sender/config 2>/dev/null; then
+            if grep -q "your_group_chat_id" /etc/telegram-sender/config 2>/dev/null; then
+                log_check "WARNING" "Telegram Config: Default chat ID not changed"
+            else
+                log_check "OK" "Telegram Config: Chat ID configured"
+            fi
+        else
+            log_check "ERROR" "Telegram Config: Chat ID missing"
+        fi
+        
+        # Check topic configuration
+        local topics_found=0
+        for topic in "TELEGRAM_TOPIC_SYSTEM" "TELEGRAM_TOPIC_ERRORS" "TELEGRAM_TOPIC_UPDATES" "TELEGRAM_TOPIC_RESTART"; do
+            if grep -q "$topic=" /etc/telegram-sender/config 2>/dev/null; then
+                ((topics_found++))
+            fi
+        done
+        log_check "INFO" "Telegram Topics: $topics_found/4 configured"
+        
+    else
+        log_check "ERROR" "Telegram Config: Not found (/etc/telegram-sender/config)"
+    fi
+    
+    # Log file check
+    if [[ -f /var/log/telegram-sender.log ]]; then
+        local log_size=$(du -h /var/log/telegram-sender.log 2>/dev/null | cut -f1)
+        local log_lines=$(wc -l < /var/log/telegram-sender.log 2>/dev/null)
+        log_check "OK" "Telegram Log: Found ($log_size, $log_lines entries)"
+        
+        # Check recent activity
+        if [[ -s /var/log/telegram-sender.log ]]; then
+            local last_entry=$(tail -1 /var/log/telegram-sender.log 2>/dev/null)
+            if [[ -n "$last_entry" ]]; then
+                local last_time=$(echo "$last_entry" | awk '{print $1, $2}')
+                log_check "INFO" "Last Activity: $last_time"
+                
+                # Check for recent successful sends
+                local recent_success=$(grep -c "SUCCESS" /var/log/telegram-sender.log 2>/dev/null)
+                local recent_errors=$(grep -c "ERROR" /var/log/telegram-sender.log 2>/dev/null)
+                log_check "INFO" "Statistics: $recent_success successful, $recent_errors errors"
+            fi
+        fi
+    else
+        log_check "WARNING" "Telegram Log: Not found (/var/log/telegram-sender.log)"
+    fi
+    
+    # Logrotate configuration
+    if [[ -f /etc/logrotate.d/telegram-sender ]]; then
+        log_check "OK" "Logrotate: Configured for telegram-sender"
+    else
+        log_check "WARNING" "Logrotate: Not configured for telegram-sender"
+    fi
+    
+    # Integration check with monitoring services
+    log_check "INFO" "--- Service Integration ---"
+    
+    # Check if monitoring services use telegram-sender
+    if [[ -f /opt/ha-monitoring/scripts/ha-failure-notifier.sh ]]; then
+        if grep -q "TELEGRAM_SENDER.*telegram-sender.sh" /opt/ha-monitoring/scripts/ha-failure-notifier.sh 2>/dev/null; then
+            log_check "OK" "ha-failure-notifier: Uses telegram-sender"
+        else
+            log_check "WARNING" "ha-failure-notifier: Uses legacy Telegram method"
+        fi
+    fi
+    
+    if [[ -f /opt/ha-monitoring/scripts/update-checker.sh ]]; then
+        if grep -q "TELEGRAM_SENDER.*telegram-sender.sh" /opt/ha-monitoring/scripts/update-checker.sh 2>/dev/null; then
+            log_check "OK" "update-checker: Uses telegram-sender"
+        else
+            log_check "WARNING" "update-checker: Uses legacy Telegram method"
+        fi
+    fi
+    
+    if [[ -f /opt/ha-monitoring/scripts/nightly-reboot.sh ]]; then
+        if grep -q "TELEGRAM_SENDER.*telegram-sender.sh" /opt/ha-monitoring/scripts/nightly-reboot.sh 2>/dev/null; then
+            log_check "OK" "nightly-reboot: Uses telegram-sender"
+        else
+            log_check "WARNING" "nightly-reboot: Uses legacy Telegram method"
+        fi
+    fi
     
     echo "" | tee -a "$REPORT_FILE"
 }

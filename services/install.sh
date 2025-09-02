@@ -16,22 +16,40 @@ fi
 # Проверяем установку Docker
 echo "🐳 Проверка Docker..."
 if ! command -v docker >/dev/null 2>&1; then
-    ececho "✅ Установка завершена!"
-echo ""
-echo "� Docker состояние:"
-echo "   ├─ Docker Engine: Настроен с ограничениями логов (10MB×7)"
-echo "   ├─ Home Assistant: Запущен на порту 8123"
-echo "   └─ Node-RED: Запущен на порту 1880"
-echo ""
-echo "📋 Logrotate настроен:"
-echo "   ├─ HA мониторинг: агрессивная ротация (5-20MB лимиты)"
-echo "   ├─ Home Assistant: ротация при 50MB"
-echo "   ├─ Systemd journal: лимит 500MB (было ${JOURNAL_SIZE_BEFORE:-'неизвестно'})"
-echo "   └─ Автоматическая ротация: ежедневно в 2:00" Установка Docker..."
+    echo "� Установка Docker..."
     curl -fsSL https://get.docker.com -o get-docker.sh
     sh get-docker.sh
     usermod -aG docker $SUDO_USER 2>/dev/null || true
-    echo "✅ Docker установлен"
+    echo "# Добавляем диаг# Добавляем диагностические алиасы для пользователя
+echo "📋 Настройка диагностических алиасов..."
+USER_HOME="/home/${SUDO_USER:-pi}"
+if [[ -d "$USER_HOME" ]]; then
+    cat >> "$USER_HOME/.bashrc" << 'EOF'
+
+# Алиас для system-diagnostic.sh
+alias health-check="system-diagnostic.sh"
+EOF
+    chown ${SUDO_USER:-pi}:${SUDO_USER:-pi} "$USER_HOME/.bashrc"
+    echo "✅ Алиас health-check добавлен"
+else
+    echo "⚠️  Домашняя директория пользователя не найдена, алиас не добавлен"
+fiы для пользователя
+echo "📋 Настройка диагностических алиасов..."
+USER_HOME="/home/${SUDO_USER:-pi}"
+if [[ -d "$USER_HOME" ]]; then
+    cat >> "$USER_HOME/.bashrc" << 'EOF'
+
+# Health Check алиасы для HA мониторинга  
+alias health-check="ha-system-health-check.sh"
+alias health-quick="ha-system-health-check.sh --quick"
+alias health-monitor="ha-system-health-check.sh --monitor"
+alias diagnostic="ha-monitoring-control diagnostic"
+EOF
+    chown ${SUDO_USER:-pi}:${SUDO_USER:-pi} "$USER_HOME/.bashrc"
+    echo "✅ Алиасы health-check добавлены"
+else
+    echo "⚠️  Домашняя директория пользователя не найдена, алиасы не добавлены"
+fiен"
 else
     echo "✅ Docker уже установлен"
 fi
@@ -196,16 +214,40 @@ cp monitoring/ha-watchdog/ha-watchdog.sh /usr/local/bin/ha-watchdog.sh
 cp monitoring/ha-failure-notifier/ha-failure-notifier.sh /usr/local/bin/ha-failure-notifier.sh
 cp system/nightly-reboot/nightly-reboot.sh /usr/local/bin/nightly-reboot.sh
 cp system/update-checker/update-checker.sh /usr/local/bin/update-checker.sh
+# NEW: Telegram Sender Service
+cp telegram-sender.sh /usr/local/bin/telegram-sender.sh
+# Health Check System
+cp ha-system-health-check.sh /usr/local/bin/ha-system-health-check.sh
 chmod +x /usr/local/bin/ha-watchdog.sh
 chmod +x /usr/local/bin/ha-failure-notifier.sh
 chmod +x /usr/local/bin/nightly-reboot.sh
 chmod +x /usr/local/bin/update-checker.sh
+chmod +x /usr/local/bin/telegram-sender.sh
+chmod +x /usr/local/bin/ha-system-health-check.sh
 
-# Копируем конфигурацию
+# Настройка Telegram Sender Service
+echo "📢 Настройка Telegram Sender Service..."
+mkdir -p /etc/telegram-sender
+if [[ ! -f /etc/telegram-sender/config ]]; then
+    cp config/telegram-sender.conf /etc/telegram-sender/config
+    chmod 600 /etc/telegram-sender/config
+    echo "⚙️ Конфигурация telegram-sender скопирована в /etc/telegram-sender/config"
+    echo "📝 ВАЖНО: Настройте токены Telegram в /etc/telegram-sender/config"
+fi
+
+# Установка logrotate для telegram-sender
+cp "${SCRIPT_DIR}/logrotate/telegram-sender" /etc/logrotate.d/
+echo "✅ Logrotate настроен для telegram-sender"
+
+# Создание лог-файла telegram-sender
+touch /var/log/telegram-sender.log
+chmod 644 /var/log/telegram-sender.log
+
+# Копируем конфигурацию ha-watchdog (legacy, без токенов Telegram)
 if [[ ! -f /etc/ha-watchdog/config ]]; then
     cp monitoring/ha-watchdog/ha-watchdog.conf /etc/ha-watchdog/config
-    echo "⚙️ Конфигурация скопирована в /etc/ha-watchdog/config"
-    echo "📝 Не забудьте настроить Telegram токены!"
+    echo "⚙️ Конфигурация ha-watchdog скопирована (без токенов Telegram)"
+    echo "📝 Telegram настройки теперь в /etc/telegram-sender/config"
 fi
 
 # Перезапуск Docker для применения настроек логирования
@@ -458,15 +500,43 @@ case "$1" in
         echo "Размер до: $BEFORE, после: $AFTER"
         ;;
     test-telegram)
-        source /etc/ha-watchdog/config
-        if [[ -n "$TELEGRAM_BOT_TOKEN" ]] && [[ -n "$TELEGRAM_CHAT_ID" ]]; then
-            curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-                -d "chat_id=$TELEGRAM_CHAT_ID" \
-                -d "text=🧪 Тест уведомлений от [$(hostname)] - Все системы работают!" && \
-            echo "✅ Тестовое сообщение отправлено" || \
-            echo "❌ Ошибка отправки сообщения"
+        echo "🧪 Тестирование Telegram через централизованный сервис..."
+        
+        # Проверяем новый centralized telegram-sender
+        if [[ -x "/usr/local/bin/telegram-sender.sh" ]] && [[ -f "/etc/telegram-sender/config" ]]; then
+            echo "📢 Используем новый telegram-sender сервис..."
+            
+            # Тестируем отправку в разные топики
+            echo "📝 Отправка тестовых сообщений в топики..."
+            
+            /usr/local/bin/telegram-sender.sh "🧪 ТЕСТ: Системное сообщение от [$(hostname)]" "2" && \
+                echo "  ✅ SYSTEM topic (ID: 2) - отправлено" || \
+                echo "  ❌ SYSTEM topic (ID: 2) - ошибка"
+                
+            sleep 1
+            
+            /usr/local/bin/telegram-sender.sh "🚨 ТЕСТ: Сообщение об ошибке от [$(hostname)]" "10" && \
+                echo "  ✅ ERRORS topic (ID: 10) - отправлено" || \
+                echo "  ❌ ERRORS topic (ID: 10) - ошибка"
+                
+            echo "📊 Проверьте логи: tail -10 /var/log/telegram-sender.log"
+            
+        # Fallback на legacy метод из ha-watchdog config
+        elif [[ -f "/etc/ha-watchdog/config" ]]; then
+            echo "⚠️ Использую legacy метод из ha-watchdog config..."
+            source /etc/ha-watchdog/config
+            if [[ -n "$TELEGRAM_BOT_TOKEN" ]] && [[ -n "$TELEGRAM_CHAT_ID" ]]; then
+                curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+                    -d "chat_id=$TELEGRAM_CHAT_ID" \
+                    -d "text=🧪 Legacy тест от [$(hostname)] - ha-watchdog config" && \
+                echo "✅ Legacy тест: сообщение отправлено" || \
+                echo "❌ Legacy тест: ошибка отправки"
+            else
+                echo "❌ Telegram токены не настроены в /etc/ha-watchdog/config"
+            fi
         else
-            echo "❌ Telegram не настроен в /etc/ha-watchdog/config"
+            echo "❌ Конфигурация Telegram не найдена!"
+            echo "📝 Настройте /etc/telegram-sender/config или /etc/ha-watchdog/config"
         fi
         ;;
     tailscale-status)
@@ -528,11 +598,38 @@ echo "   cd /opt/homeassistant && docker-compose logs   - логи контей�
 echo "   cd /opt/homeassistant && docker-compose restart - перезапуск контейнеров"
 echo ""
 echo "🔍 Диагностика системы:"
-echo "   ha-system-health-check.sh   - комплексная диагностика (79 проверок)"
 echo "   system-diagnostic.sh        - полная диагностика системы"
+echo "   health-check                 - алиас для system-diagnostic.sh"
 echo ""
-echo "📍 Файлы логов:"
-echo "   /var/log/ha-watchdog.log    - лог проверок"
-echo "   /var/log/ha-responder.log   - лог действий"
-echo "   /var/log/ha-failures.log    - лог сбоев"
+
+# Добавляем диагностические алиасы для пользователя
+echo "� Настройка диагностических алиасов..."
+USER_HOME="/home/${SUDO_USER:-pi}"
+if [[ -d "$USER_HOME" ]]; then
+    cat >> "$USER_HOME/.bashrc" << 'EOF'
+
+# Диагностические алиасы для HA мониторинга
+alias diag-full="system-diagnostic.sh"
+alias diag-telegram="system-diagnostic.sh 2>/dev/null | grep -A 25 \"Telegram Sender Service\""
+alias diag-monitoring="system-diagnostic.sh 2>/dev/null | grep -A 50 \"СИСТЕМА МОНИТОРИНГА\""
+alias diag-summary="system-diagnostic.sh 2>/dev/null | grep -E \"(OK|WARNING|ERROR)\" | tail -20"
+EOF
+    chown ${SUDO_USER:-pi}:${SUDO_USER:-pi} "$USER_HOME/.bashrc"
+    echo "✅ Алиасы диагностики добавлены"
+else
+    echo "⚠️  Домашняя директория пользователя не найдена, алиасы не добавлены"
+fi
+
+echo ""
+echo "💡 Быстрые команды диагностики:"
+echo "   health-check     - полная диагностика системы (79 проверок)"
+echo "   health-quick     - быстрая проверка основных компонентов"  
+echo "   health-monitor   - мониторинг в режиме реального времени"
+echo "   diagnostic       - альтернативная диагностика через ha-monitoring-control"
+echo ""
+echo "�📍 Файлы логов:"
+echo "   /var/log/ha-watchdog.log     - лог проверок"
+echo "   /var/log/ha-responder.log    - лог действий" 
+echo "   /var/log/ha-failures.log     - лог сбоев"
+echo "   /var/log/telegram-sender.log - лог Telegram отправок"
 echo ""

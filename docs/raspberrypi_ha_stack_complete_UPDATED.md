@@ -1,5 +1,42 @@
 # 🏠 Smart Home Network Architecture
 
+## Recent Updates (September 2025)
+
+### 📢 **telegram-sender v1.0 - Centralized Telegram Service**
+
+**Major Infrastructure Update**: Replaced individual Telegram implementations with unified service across all monitoring components.
+
+**Architecture Benefits:**
+- 🎯 **Single Point of Configuration** - All Telegram settings in `/etc/telegram-sender/config`
+- 📝 **Centralized Logging** - Unified logs in `/var/log/telegram-sender.log`
+- 🔄 **Retry & Error Handling** - Built-in resilience with 3 attempts per message
+- 🏗️ **Topic-Based Routing** - Automatic message categorization by service type
+- 📊 **Performance Metrics** - Sender tracking and delivery statistics
+
+**Service Integration:**
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ ha-watchdog     │───▶│ telegram-sender │───▶│ Telegram Bot    │
+│ (monitoring)    │    │ (centralized)   │    │ Topic: ERRORS   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ update-checker  │───▶│ telegram-sender │───▶│ Telegram Bot    │
+│ (updates)       │    │ (centralized)   │    │ Topic: UPDATES  │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ nightly-reboot  │───▶│ telegram-sender │───▶│ Telegram Bot    │
+│ (maintenance)   │    │ (centralized)   │    │ Topic: RESTART  │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+**Refactoring Results:**
+- ✅ **Eliminated 65+ lines of duplicate code** across monitoring services
+- ✅ **Reduced 14 individual curl calls** to single service invocations
+- ✅ **Simplified configuration management** - no more token duplication
+- ✅ **Enhanced error handling** - centralized retry logic and logging
+
 ## Hardware & OS Configuration
 
 ### Raspberry Pi 3B+ Setup
@@ -227,8 +264,22 @@ timestamp:priority:message_type
 
 ### System Health Monitoring
 - **Scripts Location**: `/opt/ha-monitoring/scripts/`
-- **Config**: `/etc/ha-watchdog/config`
-- **Logs**: `/var/log/ha-*.log`
+- **Config**: `/etc/ha-watchdog/config` (legacy), `/etc/telegram-sender/config` (новый)
+- **Logs**: `/var/log/ha-*.log`, `/var/log/telegram-sender.log`
+
+#### telegram-sender.sh v1.0 (NEW - September 2025)
+- **Purpose**: Centralized Telegram notification service with topic support
+- **Location**: `/usr/local/bin/telegram-sender.sh`
+- **Config**: `/etc/telegram-sender/config`
+- **Features**:
+  - **Topic-based routing** - automatic message categorization (SYSTEM:2, ERRORS:10, UPDATES:9, RESTART:4)
+  - **Retry mechanism** - 3 attempts with 2-second delays
+  - **Comprehensive logging** - sender tracking, delivery status, error diagnostics
+  - **Performance metrics** - message statistics and delivery confirmation
+  - **Security validation** - token verification and message sanitization
+  - **Flexible configuration** - timeout, retry count, parse mode customization
+- **Usage**: `telegram-sender.sh "message" "topic_id"` or `telegram-sender.sh "message"` (default topic)
+- **Integration**: Used by all monitoring services (ha-watchdog, failure-notifier, update-checker, nightly-reboot)
 
 #### ha-watchdog.sh
 - **Purpose**: Comprehensive system health checks

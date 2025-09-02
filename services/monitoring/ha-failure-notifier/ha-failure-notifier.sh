@@ -29,6 +29,9 @@ THROTTLE_WINDOW_MINUTES=30    # Окно для подсчета повторе�
 # TELEGRAM_BOT_TOKEN="your_bot_token_here"
 # TELEGRAM_CHAT_ID="your_chat_id_here"
 
+# Telegram sender service
+TELEGRAM_SENDER="/usr/local/bin/telegram-sender.sh"
+
 # Инициализация
 [[ ! -f "$HASH_FILE" ]] && mkdir -p "$(dirname "$HASH_FILE")" && touch "$HASH_FILE"
 [[ ! -f "$POSITION_FILE" ]] && mkdir -p "$(dirname "$POSITION_FILE")" && echo "0" > "$POSITION_FILE"
@@ -194,11 +197,6 @@ send_telegram() {
     local message="$1"
     local priority="${2:-normal}"
     
-    if [[ -z "$TELEGRAM_BOT_TOKEN" ]] || [[ -z "$TELEGRAM_CHAT_ID" ]]; then
-        log_action "TELEGRAM_NOT_CONFIGURED: $message"
-        return 1
-    fi
-    
     # Добавляем эмодзи в зависимости от приоритета
     case "$priority" in
         "critical") message="🚨 КРИТИЧНО: $message" ;;
@@ -210,16 +208,8 @@ send_telegram() {
     local hostname=$(hostname)
     local full_message="[$hostname] $message"
     
-    if curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-        -d "chat_id=$TELEGRAM_CHAT_ID" \
-        -d "text=$full_message" \
-        -d "parse_mode=HTML" >/dev/null 2>&1; then
-        log_action "TELEGRAM_SENT: $message"
-        return 0
-    else
-        log_action "TELEGRAM_FAILED: $message"
-        return 1
-    fi
+    # Отправляем в топик ERRORS (ID: 10) - telegram-sender сам логирует результат
+    "$TELEGRAM_SENDER" "$full_message" "10"
 }
 
 is_throttled() {
