@@ -316,10 +316,11 @@ cp monitoring/ha-failure-notifier/ha-failure-notifier.service /etc/systemd/syste
 cp monitoring/ha-failure-notifier/ha-failure-notifier.timer /etc/systemd/system/
 
 # Копируем systemd файлы системных сервисов
-cp system/nightly-reboot/nightly-reboot.service /etc/systemd/system/
-cp system/nightly-reboot/nightly-reboot.timer /etc/systemd/system/
-cp system/update-checker/update-checker.service /etc/systemd/system/
-cp system/update-checker/update-checker.timer /etc/systemd/system/
+# Копируем systemd файлы системных сервисов
+cp "${SCRIPT_DIR}/system/nightly-reboot/nightly-reboot.service" /etc/systemd/system/
+cp "${SCRIPT_DIR}/system/nightly-reboot/nightly-reboot.timer" /etc/systemd/system/
+cp "${SCRIPT_DIR}/system/update-checker/update-checker.service" /etc/systemd/system/
+cp "${SCRIPT_DIR}/system/update-checker/update-checker.timer" /etc/systemd/system/
 
 # Настройка расширенного логротейта
 echo "📝 Настройка расширенного logrotate..."

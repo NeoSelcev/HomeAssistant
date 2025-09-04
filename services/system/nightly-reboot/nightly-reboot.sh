@@ -110,7 +110,12 @@ send_telegram "$REBOOT_MSG"
 log_message "Reboot notification sent. Uptime: $UPTIME, Load: $LOAD"
 log_message "System metrics - Memory: $MEMORY_USAGE, Disk: $DISK_USAGE"
 
-# Wait 30 seconds for notification to be sent
+# Stop watchdog to prevent false alarms during reboot
+log_message "Stopping ha-watchdog timer before reboot to prevent false failure alerts"
+systemctl stop ha-watchdog.timer || log_message "Failed to stop ha-watchdog timer" "WARN"
+log_message "ha-watchdog timer stopped successfully"
+
+# Wait 30 seconds for notification to be sent and any running watchdog to complete
 sleep 30
 
 # Perform reboot

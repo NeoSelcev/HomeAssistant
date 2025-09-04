@@ -2,7 +2,7 @@
 Description=Запуск HA Watchdog каждые 2 минуты
 
 [Timer]
-OnBootSec=30
+OnBootSec=900
 OnUnitActiveSec=2min
 AccuracySec=5s
 Unit=ha-watchdog.service
