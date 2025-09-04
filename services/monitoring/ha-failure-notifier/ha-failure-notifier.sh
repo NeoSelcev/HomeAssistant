@@ -195,12 +195,12 @@ is_file_rotated() {
     # 4. Время создания новее времени модификации (новый файл)
     
     if [[ -n "$saved_hash" && -n "$curr_hash" && "$curr_hash" != "$saved_hash" ]]; then
-        log_action "ROTATION DETECTED: First line hash changed ($saved_hash -> $curr_hash)"
+        log_debug "ROTATION DETECTED: First line hash changed ($saved_hash -> $curr_hash)"
         return 0
     fi
     
     if [[ "$curr_size" -lt "$saved_size" ]]; then
-        log_action "ROTATION DETECTED: File size decreased ($saved_size -> $curr_size)"
+        log_debug "ROTATION DETECTED: File size decreased ($saved_size -> $curr_size)"
         return 0
     fi
     
@@ -209,7 +209,7 @@ is_file_rotated() {
         # Если время создания изменилось И новое время создания больше старого времени модификации
         # это значит файл был пересоздан
         if [[ "$curr_ctime" -gt "$saved_mtime" ]]; then
-            log_action "ROTATION DETECTED: File creation time changed ($saved_ctime -> $curr_ctime)"
+            log_debug "ROTATION DETECTED: File creation time changed ($saved_ctime -> $curr_ctime)"
             return 0
         fi
     fi
@@ -220,7 +220,7 @@ is_file_rotated() {
         local time_diff=$((curr_ctime - curr_mtime))
         # Если разница больше 60 секунд, вероятно файл был создан заново
         if [[ "$time_diff" -gt 60 ]]; then
-            log_action "ROTATION DETECTED: Creation time > modification time (diff: ${time_diff}s)"
+            log_debug "ROTATION DETECTED: Creation time > modification time (diff: ${time_diff}s)"
             return 0
         fi
     fi
@@ -528,14 +528,14 @@ main() {
     local newest_timestamp="$last_timestamp"
     
     log_action "Log file has $total_lines lines, last processed timestamp: $last_timestamp"
-    log_action "Current metadata: $current_metadata"
-    log_action "Saved metadata: $saved_metadata"
+    log_action "Current metadata: $current_metadata" "DEBUG"
+    log_action "Saved metadata: $saved_metadata" "DEBUG"
     
     # Проверяем, был ли файл ротирован (для информации)
     local file_rotated=false
     if [[ -n "$saved_metadata" ]] && is_file_rotated "$current_metadata" "$saved_metadata"; then
         file_rotated=true
-        log_action "File rotation detected, but processing by timestamp"
+        log_action "File rotation detected, but processing by timestamp" "DEBUG"
     fi
     
     # Обрабатываем ВСЕ строки в файле, но отправляем только новые по timestamp
@@ -575,10 +575,10 @@ main() {
             log_action "No new events found (all timestamps <= $last_timestamp)" "DEBUG"
         fi
         
-        # Если файл был ротирован, отправляем уведомление
-        if [[ "$file_rotated" == true ]]; then
-            send_telegram "Лог файл был ротирован, обработаны события по timestamp" "info"
-        fi
+        # Уведомления о ротации убраны - создавали лишний шум
+        # if [[ "$file_rotated" == true ]]; then
+        #     send_telegram "Лог файл был ротирован, обработаны события по timestamp" "info"
+        # fi
     else
         log_action "Log file is empty" "WARN"
         # Обновляем метаданные даже если файл пуст
