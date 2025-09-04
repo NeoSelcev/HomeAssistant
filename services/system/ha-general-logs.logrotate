@@ -1,0 +1,21 @@
+# Logrotate configuration for general Home Assistant logs
+# Place this file in /etc/logrotate.d/ha-general-logs
+
+# Low-frequency logs - light rotation
+/var/log/ha-debug.log
+/var/log/ha-services-control.log {
+    # Rotate when file reaches 20MB OR monthly (whichever comes first)
+    maxsize 20M
+    
+    # Keep 3 rotated files
+    rotate 3
+    
+    compress
+    delaycompress
+    notifempty
+    missingok
+    create 644 root root
+    
+    # Rotate monthly if size not reached
+    monthly
+}

@@ -1,0 +1,39 @@
+# Logrotate configuration for logging-service itself
+# Place this file in /etc/logrotate.d/logging-service
+
+/var/log/logging-service.log {
+    # Rotate when file reaches 5MB
+    maxsize 5M
+    
+    # Keep 5 rotated files (25MB total)
+    rotate 5
+    
+    # Compress rotated files to save space
+    compress
+    
+    # Don't compress the most recent rotated file
+    delaycompress
+    
+    # Don't rotate if file is empty
+    notifempty
+    
+    # Don't error if log file is missing
+    missingok
+    
+    # Create new log file with these permissions after rotation
+    create 644 root root
+    
+    # Rotate weekly if size limit not reached
+    weekly
+    
+    # Post-rotation script
+    postrotate
+        # Optionally send notification about log rotation
+        if [ -x /usr/local/bin/telegram-sender.sh ]; then
+            /usr/local/bin/telegram-sender.sh "📋 Log rotation: logging-service.log rotated (size > 5MB)" "2" 2>/dev/null || true
+        fi
+    endscript
+    
+    # Copy and truncate instead of moving (for active processes)
+    copytruncate
+}

@@ -33,13 +33,35 @@ GATEWAY=$(ip route | awk '/default/ {print $3}')
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null
 mkdir -p "$(dirname "$FAILURE_FILE")" 2>/dev/null
 
+# Опциональная интеграция с logging-service (обратная совместимость)
+LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
+if [[ -f "$LOGGING_SERVICE" ]] && [[ -r "$LOGGING_SERVICE" ]]; then
+    source "$LOGGING_SERVICE" 2>/dev/null && USE_LOGGING_SERVICE=true || USE_LOGGING_SERVICE=false
+else
+    USE_LOGGING_SERVICE=false
+fi
+
 log() {
-    echo "$(date '+%F %T') [WATCHDOG] $1" >> "$LOG_FILE"
+    local message="$1"
+    local level="${2:-INFO}"
+    
+    if [[ "$USE_LOGGING_SERVICE" == "true" ]]; then
+        # Используем centralized logging-service если доступен
+        log_structured "ha-watchdog" "$level" "$message"
+    else
+        # Fallback на проверенный метод (обратная совместимость)
+        echo "$(date '+%F %T') [WATCHDOG] $message" >> "$LOG_FILE"
+    fi
 }
 
 log_failure() {
-    echo "$(date '+%F %T') $1" >> "$FAILURE_FILE"
-    log "FAILURE: $1"
+    local message="$1"
+    
+    # Записываем в файл сбоев (как было - для совместимости с ha-failure-notifier)
+    echo "$(date '+%F %T') $message" >> "$FAILURE_FILE"
+    
+    # И логируем через стандартный механизм с уровнем ERROR
+    log "FAILURE: $message" "ERROR"
 }
 
 check_internet() {

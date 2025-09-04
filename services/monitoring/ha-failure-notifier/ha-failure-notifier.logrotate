@@ -1,0 +1,35 @@
+# Logrotate configuration for ha-failure-notifier service
+# Place this file in /etc/logrotate.d/ha-failure-notifier
+
+# High-frequency logs (every 2-5 minutes) - aggressive rotation
+/var/log/ha-failures.log
+/var/log/ha-failure-notifier.log {
+    # Rotate when file reaches 5MB OR daily (whichever comes first)
+    maxsize 5M
+    
+    # Keep 10 rotated files (50MB total per log)
+    rotate 10
+    
+    # Compress rotated files to save space
+    compress
+    
+    # Don't compress the most recent rotated file (faster access)
+    delaycompress
+    
+    # Don't rotate if file is empty
+    notifempty
+    
+    # Don't error if log file is missing
+    missingok
+    
+    # Create new log file with these permissions after rotation
+    create 644 root root
+    
+    # Rotate daily if size limit not reached
+    daily
+    
+    # Send HUP signal to rsyslog after rotation (if needed)
+    # postrotate
+    #     /bin/systemctl reload rsyslog.service > /dev/null 2>&1 || true
+    # endscript
+}

@@ -462,6 +462,25 @@ check_monitoring() {
         fi
     fi
     
+    # Additional checks from ha-system-health-check.sh
+    log_check "INFO" "--- State Files ---"
+    
+    # Monitoring state files
+    local monitoring_files=(
+        "/var/lib/ha-failure-notifier/last_timestamp.txt"
+        "/var/lib/ha-failure-notifier/throttle.txt"
+        "/var/lib/ha-failure-notifier/metadata.txt"
+    )
+    
+    for file in "${monitoring_files[@]}"; do
+        if [[ -f "$file" ]]; then
+            local content=$(head -1 "$file" 2>/dev/null)
+            log_check "OK" "State file $(basename $file): Found"
+        else
+            log_check "INFO" "State file $(basename $file): Not found (created on first run)"
+        fi
+    done
+    
     echo "" | tee -a "$REPORT_FILE"
 }
 
@@ -595,6 +614,58 @@ check_security() {
         log_check "INFO" "Firewall (UFW): Not installed"
     fi
     
+    # Fail2ban
+    if command -v fail2ban-client >/dev/null 2>&1; then
+        if systemctl is-active fail2ban >/dev/null 2>&1; then
+            log_check "OK" "Fail2ban: Service active"
+            
+            # Check jail status
+            local jail_count=$(fail2ban-client status 2>/dev/null | grep -c "Jail list:" || echo "0")
+            if [[ "$jail_count" -gt 0 ]]; then
+                local jails=$(fail2ban-client status 2>/dev/null | grep "Jail list:" | cut -d: -f2 | tr -d ' ' | tr ',' ' ')
+                log_check "INFO" "Fail2ban Jails: $jails"
+                
+                # Check banned IPs
+                local total_banned=0
+                for jail in $jails; do
+                    local banned=$(fail2ban-client status "$jail" 2>/dev/null | grep "Currently banned:" | awk '{print $NF}' || echo "0")
+                    total_banned=$((total_banned + banned))
+                done
+                log_check "INFO" "Currently Banned IPs: $total_banned"
+            fi
+        else
+            log_check "WARNING" "Fail2ban: Service inactive"
+        fi
+    else
+        log_check "INFO" "Fail2ban: Not installed"
+    fi
+    
+    # Security updates check
+    if command -v apt >/dev/null 2>&1; then
+        log_check "INFO" "--- Security Updates ---"
+        # Update package list if older than 1 day
+        local apt_update_time=$(stat -c %Y /var/lib/apt/lists/ 2>/dev/null || echo "0")
+        local current_time=$(date +%s)
+        local time_diff=$((current_time - apt_update_time))
+        
+        if [[ $time_diff -gt 86400 ]]; then
+            log_check "INFO" "Package list is outdated (>24h), checking anyway..."
+        fi
+        
+        local security_updates=$(apt list --upgradable 2>/dev/null | grep -c security || echo "0")
+        local total_updates=$(apt list --upgradable 2>/dev/null | wc -l)
+        
+        if [[ "$security_updates" -eq 0 ]]; then
+            log_check "OK" "Security Updates: None pending"
+        else
+            log_check "WARNING" "Security Updates: $security_updates security updates pending"
+        fi
+        
+        if [[ "$total_updates" -gt 0 ]]; then
+            log_check "INFO" "Total Updates Available: $total_updates"
+        fi
+    fi
+    
     # File permissions
     if [[ -f /etc/ha-watchdog/config ]]; then
         local perms=$(stat -c %a /etc/ha-watchdog/config)
@@ -608,6 +679,124 @@ check_security() {
     echo "" | tee -a "$REPORT_FILE"
 }
 
+check_recent_failures() {
+    log_section "📈 АНАЛИЗ ПОСЛЕДНИХ СБОЕВ"
+    
+    local failure_log="/var/log/ha-failures.log"
+    if [[ -f "$failure_log" ]]; then
+        local today=$(date +%Y-%m-%d)
+        local failures_today=$(grep "$today" "$failure_log" 2>/dev/null | wc -l)
+        
+        if [[ "$failures_today" -eq 0 ]]; then
+            log_check "OK" "Failures Today: No failures detected"
+        elif [[ "$failures_today" -lt 10 ]]; then
+            log_check "WARNING" "Failures Today: $failures_today failures detected"
+        else
+            log_check "ERROR" "Failures Today: Many failures - $failures_today"
+        fi
+        
+        # Show last 5 failures
+        local recent_failures=$(tail -n 5 "$failure_log" 2>/dev/null)
+        if [[ -n "$recent_failures" ]]; then
+            log_check "INFO" "Last 5 failure entries:"
+            echo "$recent_failures" | while read line; do
+                echo "  $line" | tee -a "$REPORT_FILE"
+            done
+        fi
+        
+        # Weekly failure statistics
+        local week_ago=$(date -d '7 days ago' +%Y-%m-%d)
+        local failures_week=$(awk -v start="$week_ago" -v end="$today" '$1 >= start && $1 <= end' "$failure_log" 2>/dev/null | wc -l)
+        log_check "INFO" "Failures This Week: $failures_week total"
+        
+    else
+        log_check "WARNING" "Failures Log: Not found"
+    fi
+    
+    # Notification statistics
+    local notifier_log="/var/log/ha-failure-notifier.log"
+    if [[ -f "$notifier_log" ]]; then
+        local today=$(date +%Y-%m-%d)
+        local recent_notifications=$(grep "$today" "$notifier_log" 2>/dev/null | grep -c "SUCCESS\|SENT" || echo "0")
+        local recent_throttled=$(grep "$today" "$notifier_log" 2>/dev/null | grep -c "THROTTLED" || echo "0")
+        local recent_errors=$(grep "$today" "$notifier_log" 2>/dev/null | grep -c "ERROR\|FAILED" || echo "0")
+        
+        log_check "INFO" "Notifications Today: $recent_notifications sent"
+        if [[ "$recent_throttled" -gt 0 ]]; then
+            log_check "INFO" "Throttled Events: $recent_throttled (spam protection)"
+        fi
+        if [[ "$recent_errors" -gt 0 ]]; then
+            log_check "WARNING" "Notification Errors: $recent_errors failed sends"
+        else
+            log_check "OK" "Notification Errors: None"
+        fi
+    fi
+    
+    echo "" | tee -a "$REPORT_FILE"
+}
+
+check_performance() {
+    log_section "⚡ ПРОИЗВОДИТЕЛЬНОСТЬ"
+    
+    # CPU performance test
+    log_check "INFO" "--- CPU Performance ---"
+    local cpu_cores=$(nproc)
+    log_check "INFO" "CPU Cores Available: $cpu_cores"
+    
+    # Simple CPU test - time a calculation
+    local start_time=$(date +%s.%N)
+    for i in {1..1000}; do
+        echo "scale=10; sqrt($i)" | bc -l >/dev/null 2>&1
+    done
+    local end_time=$(date +%s.%N)
+    local cpu_test_time=$(echo "$end_time - $start_time" | bc | cut -d. -f1)
+    
+    if [[ "$cpu_test_time" -lt 2 ]]; then
+        log_check "OK" "CPU Performance: Good (${cpu_test_time}s for 1000 calculations)"
+    elif [[ "$cpu_test_time" -lt 5 ]]; then
+        log_check "WARNING" "CPU Performance: Moderate (${cpu_test_time}s for 1000 calculations)"
+    else
+        log_check "WARNING" "CPU Performance: Slow (${cpu_test_time}s for 1000 calculations)"
+    fi
+    
+    # Disk I/O test
+    log_check "INFO" "--- Disk Performance ---"
+    if command -v dd >/dev/null 2>&1; then
+        local write_test=$(dd if=/dev/zero of=/tmp/test_write bs=1M count=10 oflag=sync 2>&1 | grep -o '[0-9.]\+ [MG]B/s' | head -1)
+        rm -f /tmp/test_write
+        if [[ -n "$write_test" ]]; then
+            log_check "OK" "Disk Write Speed: $write_test"
+        else
+            log_check "WARNING" "Disk Write Speed: Could not measure"
+        fi
+        
+        local read_test=$(dd if=/dev/zero of=/tmp/test_read bs=1M count=10 iflag=direct 2>&1 | grep -o '[0-9.]\+ [MG]B/s' | head -1)
+        rm -f /tmp/test_read
+        if [[ -n "$read_test" ]]; then
+            log_check "OK" "Disk Read Speed: $read_test"
+        else
+            log_check "WARNING" "Disk Read Speed: Could not measure"
+        fi
+    else
+        log_check "WARNING" "Disk Performance: dd command not available"
+    fi
+    
+    # Memory test
+    log_check "INFO" "--- Memory Performance ---"
+    if command -v stress-ng >/dev/null 2>&1; then
+        local mem_test=$(timeout 3 stress-ng --vm 1 --vm-bytes 64M --timeout 2s --quiet 2>/dev/null && echo "PASS" || echo "FAIL")
+        if [[ "$mem_test" == "PASS" ]]; then
+            log_check "OK" "Memory Stress Test: Passed"
+        else
+            log_check "WARNING" "Memory Stress Test: Failed"
+        fi
+    else
+        log_check "INFO" "Memory Stress Test: stress-ng not available"
+    fi
+    
+    echo "" | tee -a "$REPORT_FILE"
+}
+
 generate_summary() {
     log_section "📊 ИТОГОВЫЙ ОТЧЕТ"
     
@@ -615,24 +804,36 @@ generate_summary() {
     local ok_checks=$(grep -c "\[OK\]" "$REPORT_FILE")
     local warning_checks=$(grep -c "\[WARNING\]" "$REPORT_FILE")
     local error_checks=$(grep -c "\[ERROR\]" "$REPORT_FILE")
+    local info_checks=$(grep -c "\[INFO\]" "$REPORT_FILE")
     
-    log_check "INFO" "Всего проверок: $total_checks"
-    log_check "INFO" "Успешных: $ok_checks"
-    log_check "INFO" "Предупреждений: $warning_checks"
-    log_check "INFO" "Ошибок: $error_checks"
+    log_check "INFO" "Total Checks: $total_checks"
+    log_check "INFO" "Successful: $ok_checks"
+    log_check "INFO" "Warnings: $warning_checks"
+    log_check "INFO" "Errors: $error_checks"
+    log_check "INFO" "Info: $info_checks"
+    
+    # Calculate percentage
+    local pass_percent=0
+    if [[ "$total_checks" -gt 0 ]]; then
+        pass_percent=$(( (ok_checks * 100) / total_checks ))
+    fi
+    log_check "INFO" "Success Rate: ${pass_percent}%"
     
     echo "" | tee -a "$REPORT_FILE"
     
-    if [[ $error_checks -gt 0 ]]; then
-        log_check "ERROR" "СИСТЕМА ТРЕБУЕТ ВНИМАНИЯ! Найдены критические проблемы."
-    elif [[ $warning_checks -gt 0 ]]; then
-        log_check "WARNING" "Система работает, но есть предупреждения."
+    # Overall system health assessment
+    if [[ $error_checks -eq 0 && $warning_checks -eq 0 ]]; then
+        log_check "OK" "СИСТЕМА В ОТЛИЧНОМ СОСТОЯНИИ! 🎉"
+    elif [[ $error_checks -eq 0 && $warning_checks -lt 5 ]]; then
+        log_check "WARNING" "Система в хорошем состоянии (есть предупреждения) ⚠️"
+    elif [[ $error_checks -lt 3 ]]; then
+        log_check "WARNING" "СИСТЕМА ТРЕБУЕТ ВНИМАНИЯ ⚠️"
     else
-        log_check "OK" "Система работает нормально!"
+        log_check "ERROR" "СИСТЕМА ТРЕБУЕТ НЕМЕДЛЕННОГО ВМЕШАТЕЛЬСТВА! 🚨"
     fi
     
     echo "" | tee -a "$REPORT_FILE"
-    log_check "INFO" "Полный отчет сохранен в: $REPORT_FILE"
+    log_check "INFO" "Full report saved to: $REPORT_FILE"
 }
 
 # Главная функция
@@ -653,6 +854,8 @@ main() {
     check_monitoring
     check_tailscale
     check_security
+    check_recent_failures
+    check_performance
     generate_summary
     
     echo ""
