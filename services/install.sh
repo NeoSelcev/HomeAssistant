@@ -208,46 +208,91 @@ cp "${SCRIPT_DIR}/logrotate/fail2ban" /etc/logrotate.d/
 cp "${SCRIPT_DIR}/logrotate/ufw" /etc/logrotate.d/
 echo "✅ Logrotate настроен для fail2ban и ufw"
 
-# Копируем скрипты
+# Копируем скрипты (обновленная архитектура с централизованным логированием)
 echo "📋 Установка скриптов..."
-cp monitoring/ha-watchdog/ha-watchdog.sh /usr/local/bin/ha-watchdog.sh
-cp monitoring/ha-failure-notifier/ha-failure-notifier.sh /usr/local/bin/ha-failure-notifier.sh
-cp system/nightly-reboot/nightly-reboot.sh /usr/local/bin/nightly-reboot.sh
-cp system/update-checker/update-checker.sh /usr/local/bin/update-checker.sh
-# NEW: Telegram Sender Service
-cp telegram-sender.sh /usr/local/bin/telegram-sender.sh
-# Health Check System
-cp ha-system-health-check.sh /usr/local/bin/ha-system-health-check.sh
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+
+# Мониторинг (с новой архитектурой логирования)
+cp "${SCRIPT_DIR}/monitoring/ha-watchdog/ha-watchdog.sh" /usr/local/bin/ha-watchdog.sh
+cp "${SCRIPT_DIR}/monitoring/ha-failure-notifier/ha-failure-notifier.sh" /usr/local/bin/ha-failure-notifier.sh
+
+# Системные сервисы (с интеграцией в logging-service)
+cp "${SCRIPT_DIR}/system/nightly-reboot/nightly-reboot.sh" /usr/local/bin/nightly-reboot.sh
+cp "${SCRIPT_DIR}/system/update-checker/update-checker.sh" /usr/local/bin/update-checker.sh
+
+# Коммуникация (централизованный Telegram)
+cp "${SCRIPT_DIR}/communication/telegram-sender/telegram-sender.sh" /usr/local/bin/telegram-sender.sh
+
+# ЦЕНТРАЛЬНЫЙ LOGGING SERVICE (основа новой архитектуры)
+cp "${SCRIPT_DIR}/system/logging-service/logging-service.sh" /usr/local/bin/logging-service.sh
+
+# Диагностика
+cp "${SCRIPT_DIR}/diagnostics/system-diagnostic.sh" /usr/local/bin/system-diagnostic.sh
+
+# Устанавливаем права выполнения
 chmod +x /usr/local/bin/ha-watchdog.sh
 chmod +x /usr/local/bin/ha-failure-notifier.sh
 chmod +x /usr/local/bin/nightly-reboot.sh
 chmod +x /usr/local/bin/update-checker.sh
 chmod +x /usr/local/bin/telegram-sender.sh
-chmod +x /usr/local/bin/ha-system-health-check.sh
+chmod +x /usr/local/bin/logging-service.sh
+chmod +x /usr/local/bin/system-diagnostic.sh
 
-# Настройка Telegram Sender Service
-echo "📢 Настройка Telegram Sender Service..."
+echo "✅ Скрипты установлены с новой архитектурой централизованного логирования"
+
+# Настройка конфигураций для новой архитектуры
+echo "📢 Настройка централизованных сервисов..."
+
+# Telegram Sender Service
 mkdir -p /etc/telegram-sender
 if [[ ! -f /etc/telegram-sender/config ]]; then
-    cp config/telegram-sender.conf /etc/telegram-sender/config
+    cp "${SCRIPT_DIR}/communication/telegram-sender/telegram-sender.conf" /etc/telegram-sender/config
     chmod 600 /etc/telegram-sender/config
     echo "⚙️ Конфигурация telegram-sender скопирована в /etc/telegram-sender/config"
     echo "📝 ВАЖНО: Настройте токены Telegram в /etc/telegram-sender/config"
 fi
 
-# Установка logrotate для telegram-sender
-cp "${SCRIPT_DIR}/logrotate/telegram-sender" /etc/logrotate.d/
-echo "✅ Logrotate настроен для telegram-sender"
+# Centralized Logging Service
+mkdir -p /etc/logging-service
+if [[ ! -f /etc/logging-service/config ]]; then
+    cp "${SCRIPT_DIR}/system/logging-service/logging-service.conf" /etc/logging-service/config
+    chmod 644 /etc/logging-service/config
+    echo "⚙️ Конфигурация logging-service скопирована в /etc/logging-service/config"
+fi
 
-# Создание лог-файла telegram-sender
+# Создание лог-файлов для новой архитектуры
+echo "📁 Создание структуры логов..."
 touch /var/log/telegram-sender.log
+touch /var/log/logging-service.log
+touch /var/log/ha-watchdog.log
+touch /var/log/ha-failures.log
+touch /var/log/ha-failure-notifier.log
+touch /var/log/nightly-reboot.log
+touch /var/log/update-checker.log
+
 chmod 644 /var/log/telegram-sender.log
+chmod 644 /var/log/logging-service.log
+chmod 644 /var/log/ha-watchdog.log
+chmod 644 /var/log/ha-failures.log
+chmod 644 /var/log/ha-failure-notifier.log
+chmod 644 /var/log/nightly-reboot.log
+chmod 644 /var/log/update-checker.log
+
+# Logrotate для новых сервисов
+echo "🔄 Настройка logrotate для централизованной архитектуры..."
+cp "${SCRIPT_DIR}/communication/telegram-sender/telegram-sender.logrotate" /etc/logrotate.d/telegram-sender
+cp "${SCRIPT_DIR}/system/logging-service/logging-service.logrotate" /etc/logrotate.d/logging-service
+cp "${SCRIPT_DIR}/system/ha-general-logs.logrotate" /etc/logrotate.d/ha-general-logs
+
+echo "✅ Централизованные сервисы настроены"
 
 # Копируем конфигурацию ha-watchdog (legacy, без токенов Telegram)
+# Теперь ha-watchdog использует только logging-service для всех логов
 if [[ ! -f /etc/ha-watchdog/config ]]; then
-    cp monitoring/ha-watchdog/ha-watchdog.conf /etc/ha-watchdog/config
+    cp "${SCRIPT_DIR}/monitoring/ha-watchdog/ha-watchdog.conf" /etc/ha-watchdog/config
     echo "⚙️ Конфигурация ha-watchdog скопирована (без токенов Telegram)"
     echo "📝 Telegram настройки теперь в /etc/telegram-sender/config"
+    echo "📝 Все логи теперь через /usr/local/bin/logging-service.sh"
 fi
 
 # Перезапуск Docker для применения настроек логирования

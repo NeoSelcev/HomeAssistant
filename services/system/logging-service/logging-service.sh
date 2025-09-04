@@ -136,6 +136,7 @@ get_log_file() {
     case "$service" in
         "ha-watchdog") echo "/var/log/ha-watchdog.log" ;;              # ✅ Индивидуальный лог для мониторинга
         "ha-failure-notifier") echo "/var/log/ha-failure-notifier.log" ;; # ✅ Индивидуальный лог для сбоев
+        "ha-failures") echo "/var/log/ha-failures.log" ;;              # ✅ Специальный файл для failure событий
         "telegram-sender") echo "/var/log/telegram-sender.log" ;;      # ✅ Индивидуальный лог для Telegram
         "update-checker") echo "/var/log/ha-update-checker.log" ;;     # ✅ Индивидуальный лог для обновлений
         "nightly-reboot") echo "/var/log/ha-reboot.log" ;;             # ✅ Индивидуальный лог для перезагрузок

@@ -155,7 +155,8 @@ echo ""
 echo "=== 🔍 МОНИТОРИНГ ==="
 if systemctl list-timers | grep -q ha-watchdog; then
     echo "HA Watchdog: `$(systemctl is-active ha-watchdog.timer)"
-    echo "HA Responder: `$(systemctl is-active ha-responder.timer)"
+    echo "HA Failure Notifier: `$(systemctl is-active ha-failure-notifier.timer)"
+    echo "Telegram Sender: `$([ -f /usr/local/bin/telegram-sender.sh ] && echo 'Установлен' || echo 'Не установлен')"
     echo ""
     echo "Последние проверки:"
     tail -5 /var/log/ha-watchdog.log 2>/dev/null || echo "Лог не найден"
@@ -197,7 +198,7 @@ chmod +x install.sh scripts/*.sh
 
     $installScript | Invoke-SSHCommand -Command "cat > /tmp/install_monitoring.sh && chmod +x /tmp/install_monitoring.sh && /tmp/install_monitoring.sh"
     
-    Write-Success "Развертывание завершено! Не забудьте настроить Telegram в /etc/ha-watchdog/config"
+    Write-Success "Развертывание завершено! Не забудьте настроить Telegram в /etc/telegram-sender/config"
 }
 
 # Действие: Резервное копирование
@@ -212,9 +213,11 @@ function Backup-System {
     # Копируем важные конфигурации
     $backupPaths = @(
         "/srv/home",
+        "/etc/telegram-sender",
         "/etc/ha-watchdog",
         "/var/log/ha-*.log",
-        "/var/lib/ha-responder"
+        "/var/log/telegram-sender.log",
+        "/var/lib/ha-failure-notifier"
     )
     
     foreach ($path in $backupPaths) {
@@ -237,8 +240,12 @@ echo "=== 🔍 ЛОГИ WATCHDOG ==="
 tail -20 /var/log/ha-watchdog.log 2>/dev/null || echo "Лог не найден"
 echo ""
 
-echo "=== 🔧 ЛОГИ RESPONDER ==="
-tail -20 /var/log/ha-responder.log 2>/dev/null || echo "Лог не найден"
+echo "=== 🔧 ЛОГИ FAILURE NOTIFIER ==="
+tail -20 /var/log/ha-failure-notifier.log 2>/dev/null || echo "Лог не найден"
+echo ""
+
+echo "=== 📢 ЛОГИ TELEGRAM SENDER ==="
+tail -20 /var/log/telegram-sender.log 2>/dev/null || echo "Лог не найден"
 echo ""
 
 echo "=== 🚨 ЛОГИ СБОЕВ ==="
@@ -251,7 +258,7 @@ echo ""
 
 echo "=== ⚙️  ЛОГИ SYSTEMD МОНИТОРИНГА ==="
 journalctl -u ha-watchdog.service --no-pager -l --lines=5
-journalctl -u ha-responder.service --no-pager -l --lines=5
+journalctl -u ha-failure-notifier.service --no-pager -l --lines=5
 "@
 
     $logScript | Invoke-SSHCommand
@@ -265,7 +272,7 @@ function Restart-Services {
     
     $commands = @(
         @{ cmd = "systemctl restart ha-watchdog.timer"; desc = "Перезапуск HA Watchdog" }
-        @{ cmd = "systemctl restart ha-responder.timer"; desc = "Перезапуск HA Responder" }
+        @{ cmd = "systemctl restart ha-failure-notifier.timer"; desc = "Перезапуск HA Failure Notifier" }
         @{ cmd = "cd /srv/home && docker compose restart"; desc = "Перезапуск Docker контейнеров" }
     )
     
@@ -372,13 +379,15 @@ echo ""
 # Проверка мониторинга
 echo "🔍 МОНИТОРИНГ:"
 systemctl is-active ha-watchdog.timer >/dev/null 2>&1 && echo "  ✅ Watchdog активен" || echo "  ❌ Watchdog неактивен"
-systemctl is-active ha-responder.timer >/dev/null 2>&1 && echo "  ✅ Responder активен" || echo "  ❌ Responder неактивен"
+systemctl is-active ha-failure-notifier.timer >/dev/null 2>&1 && echo "  ✅ Failure Notifier активен" || echo "  ❌ Failure Notifier неактивен"
 
-if [ -f /etc/ha-watchdog/config ]; then
-    source /etc/ha-watchdog/config
-    [ ! -z "\$TELEGRAM_BOT_TOKEN" ] && echo "  ✅ Telegram настроен" || echo "  ⚠️  Telegram не настроен"
+# Проверка нового централизованного Telegram сервиса
+if [ -f /etc/telegram-sender/config ]; then
+    source /etc/telegram-sender/config
+    [ ! -z "\$TELEGRAM_BOT_TOKEN" ] && echo "  ✅ Telegram Sender настроен" || echo "  ⚠️  Telegram Sender не настроен"
+    [ -f /usr/local/bin/telegram-sender.sh ] && echo "  ✅ Telegram Sender скрипт установлен" || echo "  ❌ Telegram Sender скрипт отсутствует"
 else
-    echo "  ❌ Конфигурация мониторинга не найдена"
+    echo "  ❌ Конфигурация Telegram Sender не найдена"
 fi
 echo ""
 

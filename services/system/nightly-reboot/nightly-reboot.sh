@@ -5,6 +5,7 @@
 LOG_FILE="/var/log/ha-reboot.log"
 CONFIG_FILE="/etc/ha-watchdog/config"
 TELEGRAM_SENDER="/usr/local/bin/telegram-sender.sh"
+LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
 
 # Load configuration
 if [ -f "$CONFIG_FILE" ]; then
@@ -14,9 +15,23 @@ else
     exit 1
 fi
 
-# Function to log messages
+# Подключаем централизованное логирование (ОБЯЗАТЕЛЬНО)
+if [[ -f "$LOGGING_SERVICE" ]] && [[ -r "$LOGGING_SERVICE" ]]; then
+    source "$LOGGING_SERVICE" 2>/dev/null
+    if ! command -v log_structured >/dev/null 2>&1; then
+        echo "ERROR: logging-service загружен, но функция log_structured недоступна" >&2
+        exit 1
+    fi
+else
+    echo "ERROR: Централизованный logging-service не найден: $LOGGING_SERVICE" >&2
+    exit 1
+fi
+
+# Function to log messages (ТОЛЬКО через logging-service)
 log_message() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [NIGHTLY-REBOOT] $1" >> "$LOG_FILE"
+    local message="$1"
+    local level="${2:-INFO}"
+    log_structured "nightly-reboot" "$level" "$message"
 }
 
 # Function to send Telegram notification
@@ -32,9 +47,9 @@ UPTIME_SECONDS=$(awk '{print int($1)}' /proc/uptime)
 MIN_UPTIME=600  # 10 minutes
 
 if [ $UPTIME_SECONDS -lt $MIN_UPTIME ]; then
-    log_message "========== NIGHTLY REBOOT SCRIPT - INSUFFICIENT UPTIME =========="
-    log_message "System uptime: ${UPTIME_SECONDS}s, Required: ${MIN_UPTIME}s"
-    log_message "Script will not reboot system that just booted"
+    log_message "========== NIGHTLY REBOOT SCRIPT - INSUFFICIENT UPTIME ==========" "WARN"
+    log_message "System uptime: ${UPTIME_SECONDS}s, Required: ${MIN_UPTIME}s" "WARN"
+    log_message "Script will not reboot system that just booted" "WARN"
     
     UPTIME_MSG="⚠️ <b>Nightly Reboot - Boot Loop Protection</b>
 🕐 Time: $(date '+%Y-%m-%d %H:%M:%S %Z')
@@ -43,7 +58,7 @@ if [ $UPTIME_SECONDS -lt $MIN_UPTIME ]; then
 ❌ Reboot cancelled - boot loop protection"
     
     send_telegram "$UPTIME_MSG"
-    log_message "Boot loop protection notification sent. Exiting without reboot."
+    log_message "Boot loop protection notification sent. Exiting without reboot." "WARN"
     exit 0
 fi
 
@@ -56,9 +71,9 @@ TIME_DIFF=$((CURRENT_TIME_MINUTES - TARGET_TIME_MINUTES))
 
 # Allow ±5 minutes window (205-215 minutes from midnight)
 if [ $TIME_DIFF -lt -5 ] || [ $TIME_DIFF -gt 5 ]; then
-    log_message "========== NIGHTLY REBOOT SCRIPT CALLED AT WRONG TIME =========="
-    log_message "Current time: $(date '+%H:%M'), Expected: 03:30 (±5 min)"
-    log_message "Script will not perform reboot outside scheduled window"
+    log_message "========== NIGHTLY REBOOT SCRIPT CALLED AT WRONG TIME ==========" "WARN"
+    log_message "Current time: $(date '+%H:%M'), Expected: 03:30 (±5 min)" "WARN"
+    log_message "Script will not perform reboot outside scheduled window" "WARN"
     
     WRONG_TIME_MSG="⚠️ <b>Nightly Reboot - Wrong Time</b>
 🕐 Current: $(date '+%Y-%m-%d %H:%M:%S %Z')
@@ -66,14 +81,14 @@ if [ $TIME_DIFF -lt -5 ] || [ $TIME_DIFF -gt 5 ]; then
 ❌ Reboot cancelled - not in scheduled window"
     
     send_telegram "$WRONG_TIME_MSG"
-    log_message "Wrong time notification sent. Exiting without reboot."
+    log_message "Wrong time notification sent. Exiting without reboot." "WARN"
     exit 0
 fi
 
 # Pre-reboot checks and notification
-log_message "========== NIGHTLY REBOOT SEQUENCE STARTED =========="
-log_message "System: $(hostname), Time: $(date)"
-log_message "Starting nightly reboot sequence - time check passed"
+log_message "========== NIGHTLY REBOOT SEQUENCE STARTED ==========" "INFO"
+log_message "System: $(hostname), Time: $(date)" "INFO"
+log_message "Starting nightly reboot sequence - time check passed" "INFO"
 
 # Check system health before reboot
 UPTIME=$(uptime -p)

@@ -31,6 +31,7 @@ THROTTLE_WINDOW_MINUTES=30    # Окно для подсчета повторе�
 
 # Telegram sender service
 TELEGRAM_SENDER="/usr/local/bin/telegram-sender.sh"
+LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
 
 # Инициализация
 [[ ! -f "$HASH_FILE" ]] && mkdir -p "$(dirname "$HASH_FILE")" && touch "$HASH_FILE"
@@ -39,20 +40,54 @@ TELEGRAM_SENDER="/usr/local/bin/telegram-sender.sh"
 [[ ! -f "$TIMESTAMP_FILE" ]] && mkdir -p "$(dirname "$TIMESTAMP_FILE")" && echo "0" > "$TIMESTAMP_FILE"
 [[ ! -f "$THROTTLE_FILE" ]] && mkdir -p "$(dirname "$THROTTLE_FILE")" && touch "$THROTTLE_FILE"
 
+# Подключаем централизованное логирование (ОБЯЗАТЕЛЬНО)
+if [[ -f "$LOGGING_SERVICE" ]] && [[ -r "$LOGGING_SERVICE" ]]; then
+    source "$LOGGING_SERVICE" 2>/dev/null
+    if ! command -v log_structured >/dev/null 2>&1; then
+        echo "ERROR: logging-service загружен, но функция log_structured недоступна" >&2
+        exit 1
+    fi
+else
+    echo "ERROR: Централизованный logging-service не найден: $LOGGING_SERVICE" >&2
+    exit 1
+fi
+
 log_action() {
-    echo "$(date '+%F %T') [FAILURE-NOTIFIER] $1" >> "$ACTION_LOG"
+    local message="$1"
+    local level="${2:-INFO}"
+    log_structured "ha-failure-notifier" "$level" "$message"
 }
 
-# Извлечь timestamp из строки лога
+# Извлечь timestamp из строки лога (обновлено для logging-service формата)
 extract_timestamp() {
     local line="$1"
-    # Ожидаем формат: YYYY-MM-DD HH:MM:SS
+    # Поддерживаем форматы:
+    # Новый logging-service: "YYYY-MM-DD HH:MM:SS [ERROR] [ha-watchdog] [PID:123] FAILURE: message"
+    # Старый формат: "YYYY-MM-DD HH:MM:SS [WATCHDOG] message" 
+    # Совсем старый: "YYYY-MM-DD HH:MM:SS message"
     if [[ "$line" =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}) ]]; then
         local datetime="${BASH_REMATCH[1]}"
         # Конвертируем в Unix timestamp
         date -d "$datetime" +%s 2>/dev/null || echo "0"
     else
         echo "0"
+    fi
+}
+
+# Извлечь тип события из строки (обновлено для нового формата)
+extract_failure_type() {
+    local line="$1"
+    # Новый формат: "YYYY-MM-DD HH:MM:SS [ERROR] [ha-watchdog] [PID:123] FAILURE: SOME_FAILURE_TYPE"
+    if [[ "$line" =~ FAILURE:\ ([A-Z_][A-Z0-9_:]*) ]]; then
+        echo "${BASH_REMATCH[1]}"
+    # Старый формат: "YYYY-MM-DD HH:MM:SS [WATCHDOG] SOME_FAILURE_TYPE"  
+    elif [[ "$line" =~ \[WATCHDOG\]\ ([A-Z_][A-Z0-9_:]*) ]]; then
+        echo "${BASH_REMATCH[1]}"
+    # Совсем старый формат: "YYYY-MM-DD HH:MM:SS SOME_FAILURE_TYPE"
+    elif [[ "$line" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}\ ([A-Z_][A-Z0-9_:]*) ]]; then
+        echo "${BASH_REMATCH[1]}"
+    else
+        echo "UNKNOWN_FAILURE"
     fi
 }
 
@@ -267,49 +302,47 @@ restart_interface() {
 process_failure() {
     local line="$1"
     local event_timestamp="$2"
-    local event_type
+    
+    # Извлекаем тип события из строки лога (работает с новым форматом)
+    local event_type=$(extract_failure_type "$line")
     local message
     local priority="warning"
     local should_throttle=false
     local throttle_minutes=5
     
-    case "$line" in
+    log_action "Processing failure event: $event_type" "DEBUG"
+    
+    case "$event_type" in
         *"NO_INTERNET"*)
-            event_type="NO_INTERNET"
             message="Интернет недоступен"
             should_throttle=true
             throttle_minutes=10
             ;;
         *"GATEWAY_DOWN"*)
-            event_type="GATEWAY_DOWN"
             message="Шлюз не отвечает"
             should_throttle=true
             throttle_minutes=10
             ;;
         *"DOCKER_DAEMON_DOWN"*)
-            event_type="DOCKER_DAEMON_DOWN"
             message="Docker daemon не работает"
             priority="critical"
             should_throttle=true
             throttle_minutes=15
             ;;
-        *"HA_DOWN"*)
-            event_type="HA_DOWN"
+        *"HA_DOWN"*|*"HA_SERVICE_DOWN"*)
             message="Home Assistant недоступен"
             priority="critical"
             ;;
         *"CONTAINER_DOWN:"*)
-            local name=$(echo "$line" | sed 's/.*CONTAINER_DOWN://' | cut -d' ' -f1)
-            event_type="CONTAINER_DOWN_$name"
+            local name=$(echo "$event_type" | sed 's/.*CONTAINER_DOWN://' | cut -d: -f1)
             restart_container "$name"
             return
             ;;
         *"IFACE_DOWN:"*)
-            local iface=$(echo "$line" | sed 's/.*IFACE_DOWN://' | cut -d' ' -f1)
-            event_type="IFACE_DOWN_$iface"
+            local iface=$(echo "$event_type" | sed 's/.*IFACE_DOWN://' | cut -d: -f1)
             # Не перезапускаем интерфейс автоматически - создает много шума
             if [[ "$iface" == "wlan0" ]]; then
-                log_action "IGNORED: $iface down (auto-restart disabled)"
+                log_action "IGNORED: $iface down (auto-restart disabled)" "DEBUG"
                 return
             else
                 restart_interface "$iface"
@@ -476,10 +509,11 @@ process_failure() {
 
 # Основная функция с timestamp-based алгоритмом
 main() {
-    log_action "Starting failure processing (v3.1 smart priority-based throttling)..."
+    log_action "Starting failure processing (v3.1 smart priority-based throttling)" "INFO"
+    log_action "Enhanced for new logging-service format from ha-watchdog.sh" "DEBUG"
     
     if [[ ! -f "$LOG_FILE" ]]; then
-        log_action "Failure log file not found: $LOG_FILE"
+        log_action "Failure log file not found: $LOG_FILE" "ERROR"
         return 1
     fi
     
@@ -536,9 +570,9 @@ main() {
         echo "$current_metadata" > "$METADATA_FILE"
         if [[ "$newest_timestamp" != "$last_timestamp" ]]; then
             echo "$newest_timestamp" > "$TIMESTAMP_FILE"
-            log_action "Updated newest timestamp to $newest_timestamp, processed $processed_events new event(s)"
+            log_action "Updated newest timestamp to $newest_timestamp, processed $processed_events new event(s)" "INFO"
         else
-            log_action "No new events found (all timestamps <= $last_timestamp)"
+            log_action "No new events found (all timestamps <= $last_timestamp)" "DEBUG"
         fi
         
         # Если файл был ротирован, отправляем уведомление
@@ -546,10 +580,12 @@ main() {
             send_telegram "Лог файл был ротирован, обработаны события по timestamp" "info"
         fi
     else
-        log_action "Log file is empty"
+        log_action "Log file is empty" "WARN"
         # Обновляем метаданные даже если файл пуст
         echo "$current_metadata" > "$METADATA_FILE"
     fi
+    
+    log_action "Failure processing completed" "INFO"
 }
 
 main "$@"

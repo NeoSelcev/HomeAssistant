@@ -6,6 +6,7 @@ LOG_FILE="/var/log/ha-update-checker.log"
 REPORT_FILE="/var/log/ha-update-report.log"
 CONFIG_FILE="/etc/ha-watchdog/config"
 TELEGRAM_SENDER="/usr/local/bin/telegram-sender.sh"
+LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
 
 # Load configuration
 if [ -f "$CONFIG_FILE" ]; then
@@ -15,9 +16,23 @@ else
     exit 1
 fi
 
-# Function to log messages
+# Подключаем централизованное логирование (ОБЯЗАТЕЛЬНО)
+if [[ -f "$LOGGING_SERVICE" ]] && [[ -r "$LOGGING_SERVICE" ]]; then
+    source "$LOGGING_SERVICE" 2>/dev/null
+    if ! command -v log_structured >/dev/null 2>&1; then
+        echo "ERROR: logging-service загружен, но функция log_structured недоступна" >&2
+        exit 1
+    fi
+else
+    echo "ERROR: Централизованный logging-service не найден: $LOGGING_SERVICE" >&2
+    exit 1
+fi
+
+# Function to log messages (ТОЛЬКО через logging-service)
 log_message() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): $1" >> "$LOG_FILE"
+    local message="$1"
+    local level="${2:-INFO}"
+    log_structured "update-checker" "$level" "$message"
 }
 
 # Function to send Telegram notification
@@ -31,11 +46,11 @@ send_telegram() {
 # Check if it's a working day (Monday-Friday)
 WEEKDAY=$(date +%u)
 if [ $WEEKDAY -gt 5 ]; then
-    log_message "Skipping update check - weekend"
+    log_message "Skipping update check - weekend" "INFO"
     exit 0
 fi
 
-log_message "Starting system update check"
+log_message "Starting system update check" "INFO"
 
 # Create detailed report
 cat > "$REPORT_FILE" << EOF
@@ -191,10 +206,10 @@ if [ "$PACKAGES_NEED_UPDATE" = true ] || [ "$DOCKER_NEEDS_UPDATE" = true ] || [ 
 
     # Send notification
     send_telegram "$TELEGRAM_MSG"
-    log_message "Update check completed - Updates available: P:$PACKAGE_UPDATES D:$DOCKER_NEEDS_UPDATE K:$AVAILABLE_KERNELS"
+    log_message "Update check completed - Updates available: P:$PACKAGE_UPDATES D:$DOCKER_NEEDS_UPDATE K:$AVAILABLE_KERNELS" "WARN"
     
 else
-    log_message "Update check completed - No updates available"
+    log_message "Update check completed - No updates available" "INFO"
     echo "✅ SUMMARY: No updates available" >> "$REPORT_FILE"
     
     # Send "no updates" notification
@@ -218,4 +233,4 @@ else
 fi
 
 echo "Report saved to: $REPORT_FILE" >> "$REPORT_FILE"
-log_message "Update check report generated: $REPORT_FILE"
+log_message "Update check report generated: $REPORT_FILE" "INFO"

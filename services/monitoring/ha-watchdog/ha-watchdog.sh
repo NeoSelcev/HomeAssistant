@@ -33,34 +33,34 @@ GATEWAY=$(ip route | awk '/default/ {print $3}')
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null
 mkdir -p "$(dirname "$FAILURE_FILE")" 2>/dev/null
 
-# Опциональная интеграция с logging-service (обратная совместимость)
+# Централизованное логирование ТОЛЬКО через logging-service
 LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
 if [[ -f "$LOGGING_SERVICE" ]] && [[ -r "$LOGGING_SERVICE" ]]; then
-    source "$LOGGING_SERVICE" 2>/dev/null && USE_LOGGING_SERVICE=true || USE_LOGGING_SERVICE=false
+    source "$LOGGING_SERVICE" 2>/dev/null
+    if ! command -v log_structured >/dev/null 2>&1; then
+        echo "ERROR: logging-service загружен, но функция log_structured недоступна" >&2
+        exit 1
+    fi
 else
-    USE_LOGGING_SERVICE=false
+    echo "ERROR: Централизованный logging-service не найден: $LOGGING_SERVICE" >&2
+    echo "Система мониторинга требует logging-service для работы" >&2
+    exit 1
 fi
 
 log() {
     local message="$1"
     local level="${2:-INFO}"
-    
-    if [[ "$USE_LOGGING_SERVICE" == "true" ]]; then
-        # Используем centralized logging-service если доступен
-        log_structured "ha-watchdog" "$level" "$message"
-    else
-        # Fallback на проверенный метод (обратная совместимость)
-        echo "$(date '+%F %T') [WATCHDOG] $message" >> "$LOG_FILE"
-    fi
+    log_structured "ha-watchdog" "$level" "$message"
 }
 
 log_failure() {
     local message="$1"
     
-    # Записываем в файл сбоев (как было - для совместимости с ha-failure-notifier)
-    echo "$(date '+%F %T') $message" >> "$FAILURE_FILE"
+    # Записываем failures через централизованный logging-service 
+    # в специальный файл /var/log/ha-failures.log (для ha-failure-notifier)
+    log_structured "ha-failures" "ERROR" "FAILURE: $message"
     
-    # И логируем через стандартный механизм с уровнем ERROR
+    # И дублируем в основной лог watchdog'a для отладки
     log "FAILURE: $message" "ERROR"
 }
 
@@ -369,46 +369,52 @@ check_wifi_signal() {
 
 # Основная проверка
 main() {
-    log "Starting comprehensive system checks..."
+    log "Starting comprehensive system health check (19 components)" "INFO"
     
     local total_failures=0
     
     # Базовые проверки
+    log "Running network connectivity checks..." "DEBUG"
     check_internet || ((total_failures++))
     check_gateway || ((total_failures++))
     check_network_interface || ((total_failures++))
     
     # Ресурсы системы
+    log "Checking system resources..." "DEBUG"
     check_memory || ((total_failures++))
     check_disk || ((total_failures++))
     check_temperature || ((total_failures++))
     check_system_load || ((total_failures++))
     
     # Сервисы и контейнеры
+    log "Verifying services and containers..." "DEBUG"
     check_containers || ((total_failures++))
     check_services || ((total_failures++))
     check_critical_systemd_services || ((total_failures++))
     
     # Удаленный доступ
+    log "Testing remote access..." "DEBUG"
     check_ssh_access || ((total_failures++))
     check_tailscale_status || ((total_failures++))
     # check_public_access || ((total_failures++))  # Отключено: Tailscale Funnel не настроен
     
     # Здоровье системы
+    log "Analyzing system health..." "DEBUG"
     check_sd_card_health || ((total_failures++))
     check_power_supply || ((total_failures++))
     check_ntp_sync || ((total_failures++))
     check_log_sizes || ((total_failures++))
     
     # Дополнительные проверки
+    log "Running extended diagnostics..." "DEBUG"
     check_ha_database || ((total_failures++))
     check_swap_usage || ((total_failures++))
     check_wifi_signal || ((total_failures++))
     
     if [[ $total_failures -eq 0 ]]; then
-        log "All 19 checks passed successfully"  # Обновлено: отключена проверка public_access
+        log "Health check completed: ALL 18 CHECKS PASSED ✓" "INFO"
     else
-        log "Found $total_failures issue(s) across system components"
+        log "Health check completed: $total_failures failure(s) detected across system components" "WARN"
     fi
 }
 
