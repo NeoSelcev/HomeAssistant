@@ -484,6 +484,240 @@ check_monitoring() {
     echo "" | tee -a "$REPORT_FILE"
 }
 
+check_logging_service() {
+    log_section "📝 ЦЕНТРАЛИЗОВАННОЕ ЛОГИРОВАНИЕ"
+    
+    # Core logging service checks
+    log_check "INFO" "--- Core Logging Service ---"
+    
+    if [[ -f /usr/local/bin/logging-service.sh ]]; then
+        log_check "OK" "Logging Service: Installed"
+        
+        # Check if executable
+        if [[ -x /usr/local/bin/logging-service.sh ]]; then
+            log_check "OK" "Logging Service: Executable"
+        else
+            log_check "ERROR" "Logging Service: Not executable"
+        fi
+    else
+        log_check "ERROR" "Logging Service: Not installed (/usr/local/bin/logging-service.sh)"
+        echo "" | tee -a "$REPORT_FILE"
+        return
+    fi
+    
+    # Configuration check
+    if [[ -f /etc/logging-service/config ]]; then
+        log_check "OK" "Logging Config: Found (/etc/logging-service/config)"
+        
+        # Check permissions
+        local perms=$(stat -c%a /etc/logging-service/config 2>/dev/null)
+        if [[ "$perms" == "644" ]] || [[ "$perms" == "640" ]]; then
+            log_check "OK" "Logging Config: Secure permissions ($perms)"
+        else
+            log_check "WARNING" "Logging Config: Unusual permissions ($perms)"
+        fi
+        
+        # Check configuration content
+        source /etc/logging-service/config 2>/dev/null
+        
+        if [[ -n "$LOG_FORMAT" ]]; then
+            log_check "OK" "Log Format: $LOG_FORMAT"
+        else
+            log_check "WARNING" "Log Format: Not configured (using default: plain)"
+        fi
+        
+        if [[ -n "$MAX_MESSAGE_LENGTH" ]]; then
+            log_check "OK" "Max Message Length: $MAX_MESSAGE_LENGTH chars"
+        else
+            log_check "INFO" "Max Message Length: Using default (2048 chars)"
+        fi
+        
+        if [[ "$ENABLE_REMOTE_LOGGING" == "true" ]]; then
+            if [[ -n "$REMOTE_LOG_ENDPOINT" ]]; then
+                log_check "OK" "Remote Logging: Enabled ($REMOTE_LOG_ENDPOINT)"
+            else
+                log_check "WARNING" "Remote Logging: Enabled but no endpoint configured"
+            fi
+        else
+            log_check "INFO" "Remote Logging: Disabled"
+        fi
+        
+    else
+        log_check "ERROR" "Logging Config: Not found (/etc/logging-service/config)"
+    fi
+    
+    # Test logging service functionality
+    log_check "INFO" "--- Functionality Tests ---"
+    
+    # Test if logging service can be sourced
+    if source /usr/local/bin/logging-service.sh 2>/dev/null; then
+        log_check "OK" "Service Loading: Can be sourced"
+        
+        # Test if main function exists
+        if command -v log_structured >/dev/null 2>&1; then
+            log_check "OK" "Core Function: log_structured available"
+            
+            # Test actual logging functionality
+            local test_message="DIAGNOSTIC_TEST_$(date +%s)"
+            if log_structured "system-diagnostic" "INFO" "$test_message" 2>/dev/null; then
+                log_check "OK" "Logging Test: Functional"
+                
+                # Verify log was written
+                local diagnostic_log="/var/log/ha-system-diagnostic.log"
+                if [[ -f "$diagnostic_log" ]] && grep -q "$test_message" "$diagnostic_log" 2>/dev/null; then
+                    log_check "OK" "Log Write: Verified (message written to log)"
+                else
+                    log_check "WARNING" "Log Write: Cannot verify message in log file"
+                fi
+            else
+                log_check "ERROR" "Logging Test: Failed to execute log_structured"
+            fi
+        else
+            log_check "ERROR" "Core Function: log_structured not available"
+        fi
+        
+        # Test helper functions
+        if command -v get_log_file >/dev/null 2>&1; then
+            log_check "OK" "Helper Function: get_log_file available"
+            
+            # Test service mapping
+            local test_services=("ha-watchdog" "ha-failure-notifier" "telegram-sender" "ha-failures")
+            local mapping_errors=0
+            for service in "${test_services[@]}"; do
+                local log_file=$(get_log_file "$service" 2>/dev/null)
+                if [[ -n "$log_file" ]] && [[ "$log_file" =~ ^/var/log/ ]]; then
+                    # Service mapping working
+                    continue
+                else
+                    ((mapping_errors++))
+                fi
+            done
+            
+            if [[ $mapping_errors -eq 0 ]]; then
+                log_check "OK" "Service Mapping: All core services mapped correctly"
+            else
+                log_check "WARNING" "Service Mapping: $mapping_errors services have mapping issues"
+            fi
+        else
+            log_check "WARNING" "Helper Function: get_log_file not available"
+        fi
+        
+    else
+        log_check "ERROR" "Service Loading: Cannot source logging-service.sh"
+    fi
+    
+    # Check logging service's own log
+    log_check "INFO" "--- Service Monitoring ---"
+    
+    local service_log="/var/log/logging-service.log"
+    if [[ -f "$service_log" ]]; then
+        local log_size=$(du -h "$service_log" 2>/dev/null | cut -f1)
+        local log_lines=$(wc -l < "$service_log" 2>/dev/null)
+        log_check "OK" "Service Log: Found ($log_size, $log_lines entries)"
+        
+        # Check for recent activity
+        if [[ -s "$service_log" ]]; then
+            local last_entry=$(tail -1 "$service_log" 2>/dev/null)
+            if [[ -n "$last_entry" ]]; then
+                local last_time=$(echo "$last_entry" | awk '{print $1, $2}')
+                log_check "INFO" "Last Activity: $last_time"
+                
+                # Check for errors in logging service
+                local recent_errors=$(grep -c "ERROR\|CRITICAL" "$service_log" 2>/dev/null)
+                if [[ $recent_errors -eq 0 ]]; then
+                    log_check "OK" "Service Health: No errors in service log"
+                else
+                    log_check "WARNING" "Service Health: $recent_errors errors found in service log"
+                fi
+            fi
+        fi
+    else
+        log_check "INFO" "Service Log: Not found (created on first use)"
+    fi
+    
+    # Check integration with dependent services
+    log_check "INFO" "--- Service Dependencies ---"
+    
+    local dependent_services=(
+        "/usr/local/bin/ha-watchdog.sh"
+        "/usr/local/bin/ha-failure-notifier.sh"
+        "/usr/local/bin/update-checker.sh"
+        "/usr/local/bin/nightly-reboot.sh"
+    )
+    
+    local integration_count=0
+    for service_file in "${dependent_services[@]}"; do
+        if [[ -f "$service_file" ]]; then
+            if grep -q "logging-service\.sh" "$service_file" 2>/dev/null; then
+                ((integration_count++))
+            fi
+        fi
+    done
+    
+    log_check "INFO" "Service Integration: $integration_count/4 services use logging-service"
+    
+    if [[ $integration_count -eq 4 ]]; then
+        log_check "OK" "Architecture: Full centralized logging adoption"
+    elif [[ $integration_count -gt 2 ]]; then
+        log_check "WARNING" "Architecture: Partial centralized logging adoption"
+    else
+        log_check "ERROR" "Architecture: Minimal centralized logging adoption"
+    fi
+    
+    # Check log files managed by logging service
+    log_check "INFO" "--- Managed Log Files ---"
+    
+    local managed_logs=(
+        "/var/log/ha-watchdog.log"
+        "/var/log/ha-failure-notifier.log"
+        "/var/log/ha-failures.log"
+        "/var/log/telegram-sender.log"
+        "/var/log/ha-update-checker.log"
+    )
+    
+    local healthy_logs=0
+    for log_file in "${managed_logs[@]}"; do
+        if [[ -f "$log_file" ]]; then
+            local size=$(du -h "$log_file" 2>/dev/null | cut -f1)
+            local lines=$(wc -l < "$log_file" 2>/dev/null)
+            
+            # Check if log is not too large (>100MB = problem)
+            local size_mb=$(du -m "$log_file" 2>/dev/null | cut -f1)
+            if [[ $size_mb -gt 100 ]]; then
+                log_check "WARNING" "Log File $(basename $log_file): Large size ($size, $lines lines)"
+            else
+                log_check "OK" "Log File $(basename $log_file): Healthy ($size, $lines lines)"
+                ((healthy_logs++))
+            fi
+        else
+            log_check "INFO" "Log File $(basename $log_file): Not found (created on first use)"
+        fi
+    done
+    
+    if [[ $healthy_logs -eq ${#managed_logs[@]} ]]; then
+        log_check "OK" "Log Management: All managed logs are healthy"
+    elif [[ $healthy_logs -gt 3 ]]; then
+        log_check "WARNING" "Log Management: Most logs healthy ($healthy_logs/${#managed_logs[@]})"
+    else
+        log_check "WARNING" "Log Management: Few logs healthy ($healthy_logs/${#managed_logs[@]})"
+    fi
+    
+    # Logrotate integration
+    if [[ -f /etc/logrotate.d/logging-service ]]; then
+        log_check "OK" "Logrotate: Configured for logging-service"
+    else
+        log_check "WARNING" "Logrotate: Not configured for logging-service"
+    fi
+    
+    if [[ -f /etc/logrotate.d/ha-general-logs ]]; then
+        log_check "OK" "Logrotate: Configured for HA logs"
+    else
+        log_check "WARNING" "Logrotate: Not configured for HA logs"
+    fi
+    
+    echo "" | tee -a "$REPORT_FILE"
+}
+
 check_tailscale() {
     log_section "🔗 TAILSCALE VPN"
     
@@ -852,6 +1086,7 @@ main() {
     check_docker
     check_services
     check_monitoring
+    check_logging_service
     check_tailscale
     check_security
     check_recent_failures
