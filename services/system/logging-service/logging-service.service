@@ -1,0 +1,17 @@
+[Unit]
+Description=Centralized Logging Service
+Documentation=man:systemd.service(5)
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/local/bin/logging-service.sh start
+ExecStop=/usr/local/bin/logging-service.sh stop
+PIDFile=/run/logging-service.pid
+User=root
+Group=root
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
