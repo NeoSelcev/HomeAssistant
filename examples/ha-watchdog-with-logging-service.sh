@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# Пример модификации ha-watchdog.sh для использования logging-service
-# Показывает как интегрировать стандартизированное логирование
+# Example modification of ha-watchdog.sh to use logging-service
+# Demonstrates how to integrate standardized logging
 
 LOG_FILE="/var/log/ha-watchdog.log"
 FAILURE_FILE="/var/log/ha-failures.log"
 CONFIG_FILE="/etc/ha-watchdog/config"
 
-# Подключение centralized logging service (опционально)
+# Attach centralized logging service (optional)
 LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
 if [[ -f "$LOGGING_SERVICE" ]]; then
-    # Проверяем, что файл исполняемый и можем его источником
+    # Ensure the file is executable and can be sourced
     if [[ -r "$LOGGING_SERVICE" ]]; then
         source "$LOGGING_SERVICE"
         USE_STRUCTURED_LOGGING=true
@@ -24,16 +24,16 @@ else
     USE_STRUCTURED_LOGGING=false
 fi
 
-# Функция логирования с автоматическим выбором метода
+# Logging function with automatic method selection
 log() {
     local message="$1"
     local level="${2:-INFO}"
     
     if [[ "$USE_STRUCTURED_LOGGING" == "true" ]]; then
-        # Используем централизованный logging-service
+    # Use centralized logging-service
         log_structured "ha-watchdog" "$level" "$message"
     else
-        # Fallback на старый метод
+    # Fallback to legacy method
         echo "$(date '+%F %T') [WATCHDOG] $message" >> "$LOG_FILE"
     fi
 }
@@ -41,14 +41,14 @@ log() {
 log_failure() {
     local message="$1"
     
-    # Записываем в файл сбоев (как было)
+    # Write to failures file (previous behavior)
     echo "$(date '+%F %T') $message" >> "$FAILURE_FILE"
     
-    # И логируем через стандартный механизм
+    # And log through the standardized mechanism
     log "FAILURE: $message" "ERROR"
 }
 
-# Пример использования:
+# Example usage:
 check_internet() {
     local start_time=$(date +%s%3N)
     
@@ -60,7 +60,7 @@ check_internet() {
     local end_time=$(date +%s%3N)
     local duration=$((end_time - start_time))
     
-    # Логируем с метриками если доступно
+    # Log with metrics if available
     if [[ "$USE_STRUCTURED_LOGGING" == "true" ]]; then
         log_with_metrics "ha-watchdog" "INFO" "Internet check successful" "$duration"
     else
@@ -76,7 +76,7 @@ check_memory() {
     local mem_usage_percent=$(( (mem_total_mb - mem_available_mb) * 100 / mem_total_mb ))
     
     if [[ "$mem_available_mb" -lt 80 ]]; then
-        # Структурированное логирование с дополнительными данными
+    # Structured logging with extra data
         if [[ "$USE_STRUCTURED_LOGGING" == "true" ]]; then
             local extra_data='{"mem_available_mb": '$mem_available_mb', "mem_usage_percent": '$mem_usage_percent'}'
             log_structured "ha-watchdog" "ERROR" "Low memory: ${mem_available_mb}MB available" "$extra_data"
@@ -91,7 +91,7 @@ check_memory() {
     return 0
 }
 
-# Основная логика
+# Main logic
 main() {
     log "Starting system health check" "INFO"
     
@@ -110,7 +110,7 @@ main() {
         ((checks_passed++))
     fi
     
-    # Итоговый отчет
+    # Final summary report
     local success_rate=$(( checks_passed * 100 / checks_total ))
     
     if [[ "$USE_STRUCTURED_LOGGING" == "true" ]]; then

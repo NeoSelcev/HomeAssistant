@@ -1,6 +1,6 @@
-# Tailscale Funnel - публичный HTTPS доступ
-# Цель: Открывает доступ к HA из интернета через Tailscale
-# Установка: sudo systemctl enable --now tailscale-funnel-ha.service
+# Tailscale Funnel - public HTTPS access
+# Purpose: Exposes Home Assistant to the internet via Tailscale
+# Install: sudo systemctl enable --now tailscale-funnel-ha.service
 
 [Unit]
 Description=Tailscale Funnel for Home Assistant (public HTTPS)

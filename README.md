@@ -4,47 +4,47 @@ Comprehensive monitoring system for Home Assistant on Raspberry Pi 3B+ with auto
 
 ## ⚡ Recent Updates (September 2025)
 
-### 📢 **telegram-sender v1.0 - Централизованный Telegram Сервис**
+### 📢 **telegram-sender v1.0 - Centralized Telegram Service**
 
-**Новый компонент:** Универсальный сервис отправки сообщений в Telegram с поддержкой топиков и продвинутым логированием.
+**New Component:** Universal service for sending messages to Telegram with topic support and advanced logging.
 
-**Ключевые возможности:**
-- 🎯 **Топики-ориентированная отправка** - автоматическое определение топика по ID
-- 🔄 **Retry механизм** - 3 попытки отправки с задержкой 2 секунды
-- 📝 **Подробное логирование** - отслеживание отправителя, статусов, ошибок
-- ⚙️ **Гибкая конфигурация** - отдельный конфиг файл с полными настройками
-- 🔒 **Безопасность** - проверка токенов и валидация сообщений
-- 📊 **Метрики** - статистика отправки и производительности
+**Key Features:**
+- 🎯 **Topic-oriented sending** - automatic topic detection by ID
+- 🔄 **Retry mechanism** - 3 sending attempts with 2-second delay
+- 📝 **Detailed logging** - tracking senders, statuses, errors
+- ⚙️ **Flexible configuration** - separate config file with full settings
+- 🔒 **Security** - token validation and message verification
+- 📊 **Metrics** - sending statistics and performance data
 
-**Поддерживаемые топики:**
-- 🏠 **SYSTEM (ID: 2)** - Системные сообщения и общая информация
-- 🚨 **ERRORS (ID: 10)** - Критические ошибки и сбои системы  
-- 📦 **UPDATES (ID: 9)** - Обновления пакетов и Docker образов
-- 🔄 **RESTART (ID: 4)** - Перезагрузки и рестарты сервисов
+**Supported Topics:**
+- 🏠 **SYSTEM (ID: 2)** - System messages and general information
+- 🚨 **ERRORS (ID: 10)** - Critical errors and system failures  
+- 📦 **UPDATES (ID: 9)** - Package and Docker image updates
+- 🔄 **RESTART (ID: 4)** - Reboots and service restarts
 
-**Файлы сервиса:**
+**Service Files:**
 ```
-/usr/local/bin/telegram-sender.sh     # Основной скрипт
-/etc/telegram-sender/config           # Конфигурация
-/var/log/telegram-sender.log          # Логи отправки  
-/etc/logrotate.d/telegram-sender      # Ротация логов
+/usr/local/bin/telegram-sender.sh     # Main script
+/etc/telegram-sender/config           # Configuration
+/var/log/telegram-sender.log          # Sending logs  
+/etc/logrotate.d/telegram-sender      # Log rotation
 ```
 
-**Использование:**
+**Usage:**
 ```bash
-# Прямой вызов с топиком
-telegram-sender.sh "Сообщение" "10"  # В топик ERRORS
+# Direct call with topic
+telegram-sender.sh "Message" "10"  # To ERRORS topic
 
-# Из скриптов мониторинга
-"$TELEGRAM_SENDER" "$message" "2"    # В топик SYSTEM
+# From monitoring scripts
+"$TELEGRAM_SENDER" "$message" "2"    # To SYSTEM topic
 ```
 
-**Результат рефакторинга:**
-- ✅ **Удалено ~65 строк дублированного кода** из мониторинг сервисов
-- ✅ **Заменено 14 curl вызовов** на единый централизованный сервис
-- ✅ **Упрощены функции send_telegram** в ha-failure-notifier, update-checker, nightly-reboot
-- ✅ **Единое место конфигурации** - больше не нужно дублировать токены
-- ✅ **Централизованное логирование** - все отправки логируются в одном месте
+**Refactoring Results:**
+- ✅ **Removed ~65 lines of duplicated code** from monitoring services
+- ✅ **Replaced 14 curl calls** with single centralized service
+- ✅ **Simplified send_telegram functions** in ha-failure-notifier, update-checker, nightly-reboot
+- ✅ **Single configuration point** - no more token duplication needed
+- ✅ **Centralized logging** - all sends logged in one place
 
 ### 🧠 **ha-system-health-check v1.0 - Comprehensive System Diagnostics**
 
@@ -279,7 +279,7 @@ Host rpi
     ServerAliveInterval 60
     ServerAliveCountMax 3
 
-# Raspberry Pi через VPN (Tailscale)
+# Raspberry Pi via VPN (Tailscale)
 Host rpi-vpn
     HostName 100.103.54.125
     Port 22
@@ -325,14 +325,14 @@ ssh rpi "docker ps"
 ssh rpi "vcgencmd measure_temp && free -h"
 ```
 
-## 🩺 System Health Diagnostics - СУПЕР ВЕРСИЯ
+## 🩺 System Health Diagnostics - SUPER VERSION
 
 ### **Quick Health Check Commands**
 
-The system includes a **СУПЕР comprehensive diagnostic tool** with **79 checks** accessible via simple SSH commands:
+The system includes a **SUPER comprehensive diagnostic tool** with **79 checks** accessible via simple SSH commands:
 
 ```bash
-# Full system diagnostics (79 checks) - СУПЕР ВЕРСИЯ
+# Full system diagnostics (79 checks) - SUPER VERSION
 ssh rpi-vpn health-check
 
 # Quick essential checks
@@ -348,7 +348,7 @@ ssh rpi-vpn health-check --verbose
 ssh rpi-vpn "health-check --help"
 ```
 
-### **СУПЕР Diagnostic Coverage (79 checks total)**
+### **SUPER Diagnostic Coverage (79 checks total)**
 
 **🖥️ Basic System Info (6 checks)**
 - Hostname, Uptime, Kernel, OS, Architecture, CPU Model
@@ -462,13 +462,13 @@ ssh rpi-vpn "stress-ng --cpu 1 --vm 1 --vm-bytes 100M -t 30s"
 ================================================================
   HA System Health Check v1.0
 ================================================================
-[✓ PASS] Использование памяти (67.2%)
-[✓ PASS] Home Assistant (порт 8123) - Сервис отвечает  
-[⚠ WARN] Portainer (порт 9000) - Сервис недоступен
-[✗ FAIL] DNS разрешение - DNS не работает
+[✓ PASS] Memory usage (67.2%)
+[✓ PASS] Home Assistant (port 8123) - Service responding  
+[⚠ WARN] Portainer (port 9000) - Service unavailable
+[✗ FAIL] DNS resolution - DNS not working
 
-Всего проверок: 37 | Успешно: 24 (64%) | Предупреждения: 8 | Ошибки: 5
-🚨 СИСТЕМА ТРЕБУЕТ НЕМЕДЛЕННОГО ВМЕШАТЕЛЬСТВА
+Total checks: 37 | Passed: 24 (64%) | Warnings: 8 | Errors: 5
+🚨 SYSTEM REQUIRES IMMEDIATE ATTENTION
 ```
 
 ### **Automated Setup on Raspberry Pi**
@@ -513,35 +513,35 @@ sudo ./install.sh
 
 ### **2. Configure Telegram Bot**
 
-**Новая централизованная конфигурация** (через telegram-sender сервис):
+**New centralized configuration** (via telegram-sender service):
 
-1. Создайте бота через @BotFather в Telegram
-2. Получите токен бота и ID группы с топиками
-3. Создайте конфигурацию telegram-sender:
+1. Create a bot via @BotFather in Telegram
+2. Obtain the bot token and group ID with discussion topics
+3. Create the telegram-sender configuration:
 
 ```bash
 sudo mkdir -p /etc/telegram-sender
 sudo tee /etc/telegram-sender/config << 'EOF'
-# Основные настройки бота
+# Core bot settings
 TELEGRAM_BOT_TOKEN="your_bot_token_here"
 TELEGRAM_CHAT_ID="your_group_chat_id"
 
-# Топики группы (message_thread_id)
-TELEGRAM_TOPIC_SYSTEM=2     # Системные сообщения
-TELEGRAM_TOPIC_ERRORS=10    # Ошибки и сбои
-TELEGRAM_TOPIC_UPDATES=9    # Обновления
-TELEGRAM_TOPIC_RESTART=4    # Перезагрузки
+# Group topics (message_thread_id)
+TELEGRAM_TOPIC_SYSTEM=2     # System messages
+TELEGRAM_TOPIC_ERRORS=10    # Errors and failures
+TELEGRAM_TOPIC_UPDATES=9    # Updates
+TELEGRAM_TOPIC_RESTART=4    # Restarts
 
-# Настройки производительности
+# Performance settings
 TELEGRAM_TIMEOUT=10
 TELEGRAM_RETRY_COUNT=3
 TELEGRAM_RETRY_DELAY=2
 EOF
 ```
 
-**Устаревшая конфигурация** (больше не используется):
-- ~~`/etc/ha-watchdog/config`~~ - токены Telegram перенесены в telegram-sender
-- Все сервисы мониторинга теперь используют централизованный telegram-sender.sh
+**Deprecated configuration** (no longer used):
+- ~~`/etc/ha-watchdog/config`~~ - Telegram tokens moved to telegram-sender
+- All monitoring services now use centralized telegram-sender.sh
 
 ### **3. Management Commands**
 ```bash
@@ -593,7 +593,7 @@ ssh rpi "tail -20 /var/log/ha-failures.log"
 - **Failures**: `/var/log/ha-failures.log`
 - **Reboot**: `/var/log/ha-reboot.log`
 - **Updates**: `/var/log/ha-update-checker.log`
-- **Telegram Sender**: `/var/log/telegram-sender.log` (новый централизованный лог)
+- **Telegram Sender**: `/var/log/telegram-sender.log` (new centralized log)
 
 ## 🔧 System Architecture
 
@@ -688,43 +688,43 @@ ssh rpi "htop -d 5 -n 3"
 .\manage.ps1 -Action check -RpiIP 192.168.1.21
 ```
 
-## 📁 Структура проекта
+## 📁 Project Structure
 
 ```
 project/
-├── 📋 README.md                           # Эта документация
-├── 🔧 manage.ps1                          # Управление с Windows (9 команд)
-├── 🐳 docker-compose.yml                  # Docker стек (HA + Node-RED)
-├── 📁 monitoring/                         # Система мониторинга
+├── 📋 README.md                           # This documentation
+├── 🔧 manage.ps1                          # Management from Windows (9 commands)
+├── 🐳 docker-compose.yml                  # Docker stack (HA + Node-RED)
+├── 📁 monitoring/                         # Monitoring system
 │   ├── scripts/
-│   │   ├── ha-watchdog.sh                 # Мониторинг каждые 2 минуты
-│   │   ├── ha-failure-notifier.sh         # Обработка сбоев + Telegram
-│   │   ├── nightly-reboot.sh              # Ночная перезагрузка
-│   │   └── update-checker.sh              # Проверка обновлений
-│   ├── systemd/                           # Автозапуск сервисов
-│   │   ├── ha-watchdog.service/timer      # SystemD конфигурация
+│   │   ├── ha-watchdog.sh                 # Monitoring every 2 minutes
+│   │   ├── ha-failure-notifier.sh         # Failure processing + Telegram
+│   │   ├── nightly-reboot.sh              # Nightly reboot
+│   │   └── update-checker.sh              # Update checking
+│   ├── systemd/                           # Service autostart (systemd units)
+│   │   ├── ha-watchdog.service/timer      # SystemD configuration
 │   │   ├── ha-failure-notifier.service/timer     
 │   │   ├── nightly-reboot.service/timer
 │   │   └── update-checker.service/timer
 │   ├── config/
-│   │   └── ha-watchdog.conf               # Пороги мониторинга
-│   └── install.sh                         # Автоматическая установка
-├── 📁 tailscale_native/                   # Нативная конфигурация Tailscale
-│   ├── systemd/                           # Сервисы: tailscaled, serve, funnel
-│   ├── config/tailscaled.default          # Переменные окружения
-│   └── restore-tailscale.sh               # Скрипт восстановления
+│   │   └── ha-watchdog.conf               # Monitoring thresholds
+│   └── install.sh                         # Automatic installation
+├── 📁 tailscale_native/                   # Native Tailscale configuration
+│   ├── systemd/                           # Services: tailscaled, serve, funnel
+│   ├── config/tailscaled.default          # Environment variables
+│   └── restore-tailscale.sh               # Restore script
 ├── 📁 management/                         
-│   └── system-diagnostic.sh               # Комплексная диагностика
-└── 📁 docs/                               # Сетевая архитектура
-    ├── network-infrastructure.md          # Топология домашней сети
-    ├── raspberrypi_ha_stack_complete_UPDATED.md  # Полная архитектура Pi
-    └── images/                            # Схемы и диаграммы
+│   └── system-diagnostic.sh               # Comprehensive diagnostics
+└── 📁 docs/                               # Network architecture
+  ├── network-infrastructure.md          # Home network topology
+  ├── raspberrypi_ha_stack_complete_UPDATED.md  # Full Pi architecture
+  └── images/                            # Schemes and diagrams
 ```
 
 ## 🌐 Tailscale VPN Configuration
 
 ### **Current Setup**
-- **Device**: rpi3-20250711 (единственное активное)
+- **Device**: rpi3-20250711 (only active device)
 - **IP**: 100.103.54.125
 - **Public URL**: https://rpi3-20250711.tail586076.ts.net/
 - **Local HTTPS**: https://100.103.54.125:8443/
@@ -735,45 +735,45 @@ cd tailscale_native/
 sudo ./restore-tailscale.sh
 ```
 
-## 🔔 Telegram уведомления
+## 🔔 Telegram Notifications
 
-Система отправляет уведомления с эмодзи приоритетами:
-- 🔴 **КРИТИЧНО**: Высокая температура (>70°C), недоступность Home Assistant
-- 🟠 **ВАЖНО**: Упавшие Docker контейнеры, проблемы сети
-- 🟡 **ПРЕДУПРЕЖДЕНИЕ**: Высокая загрузка системы, медленная сеть
-- 🟢 **ИНФОРМАЦИЯ**: Восстановление сервисов, успешные перезапуски
-- 🌙 **НОЧНЫЕ ОТЧЕТЫ**: Ежедневные отчеты о состоянии системы и обновлениях
+The system sends notifications with emoji priorities:
+- 🔴 **CRITICAL**: High temperature (>70°C), Home Assistant unreachable
+- 🟠 **IMPORTANT**: Docker container failures, network issues
+- 🟡 **WARNING**: High system load, slow network
+- 🟢 **INFO**: Service recovery, successful restarts
+- 🌙 **NIGHTLY REPORTS**: Daily system status and update summaries
 
-## 🌐 Сетевая инфраструктура
+## 🌐 Network Infrastructure
 
-### Основные устройства
-- **Главный роутер**: Technicolor FGA2233PTN (оптоволокно)
-- **Mesh система**: TP-Link Deco HC220-G1-IL (расширение покрытия)
-- **IoT роутеры**: Изолированные сети для умных устройств
-- **WiFi расширитель**: TP-Link RE305
+### Core Devices
+- **Main router**: Technicolor FGA2233PTN (fiber)
+- **Mesh system**: TP-Link Deco HC220-G1-IL (coverage extension)
+- **IoT routers**: Isolated networks for smart devices
+- **WiFi extender**: TP-Link RE305
 
-### Конфигурация
-- **Сеть**: 192.168.1.0/24
-- **Pi адрес**: 192.168.1.21 (статический)
+### Configuration
+- **Network**: 192.168.1.0/24
+- **Pi address**: 192.168.1.21 (static)
 - **DNS**: 8.8.8.8, 1.1.1.1
-- **VPN**: Tailscale для удаленного доступа
+- **VPN**: Tailscale for remote access
 
-## 📊 Мониторинг и диагностика
+## 📊 Monitoring and Diagnostics
 
-### Ключевые метрики
-- Температура CPU (норма <65°C, критично >70°C)
-- Загрузка системы (CPU, RAM, диск)
-- Доступность сервисов (ping, port check)
-- Состояние Docker контейнеров
+### Key Metrics
+- CPU temperature (normal <65°C, critical >70°C)
+- System load (CPU, RAM, disk)
+- Service availability (ping, port check)
+- Docker container status
 
-### Автоматическое восстановление
-- Перезапуск упавших контейнеров
-- Восстановление WiFi интерфейса
-- Очистка логов при переполнении диска
-- Уведомления о всех действиях
+### Automatic Recovery
+- Restart failed containers
+- Restore WiFi interface
+- Clean logs when disk fills
+- Notify about all actions
 
 ---
 *Smart Home Monitoring System v2.0 - Raspberry Pi 3B+ + Home Assistant*  
-*Создано для автоматического мониторинга и поддержания работоспособности умного дома*
+*Created for automated monitoring and maintaining smart home reliability*
 
 **Latest Update (August 2025):** Enhanced failure notification system with intelligent file rotation detection and anti-spam protection. Now processes only NEW events, eliminating duplicate alerts.

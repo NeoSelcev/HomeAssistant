@@ -1,5 +1,5 @@
 [Unit]
-Description=Запуск HA Watchdog каждые 2 минуты
+Description=Run HA Watchdog every 2 minutes
 
 [Timer]
 OnBootSec=900

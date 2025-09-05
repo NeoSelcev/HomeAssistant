@@ -1,5 +1,5 @@
 [Unit]
-Description=Запуск HA Failure Notifier каждые 5 минут
+Description=Run HA Failure Notifier every 5 minutes
 
 [Timer]
 OnBootSec=1min

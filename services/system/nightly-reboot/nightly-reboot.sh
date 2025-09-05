@@ -15,19 +15,19 @@ else
     exit 1
 fi
 
-# Подключаем централизованное логирование (ОБЯЗАТЕЛЬНО)
+# Connect centralized logging service (REQUIRED)
 if [[ -f "$LOGGING_SERVICE" ]] && [[ -r "$LOGGING_SERVICE" ]]; then
     source "$LOGGING_SERVICE" 2>/dev/null
     if ! command -v log_structured >/dev/null 2>&1; then
-        echo "ERROR: logging-service загружен, но функция log_structured недоступна" >&2
+        echo "ERROR: logging-service loaded, but log_structured function is not available" >&2
         exit 1
     fi
 else
-    echo "ERROR: Централизованный logging-service не найден: $LOGGING_SERVICE" >&2
+    echo "ERROR: Centralized logging-service not found: $LOGGING_SERVICE" >&2
     exit 1
 fi
 
-# Function to log messages (ТОЛЬКО через logging-service)
+# Function to log messages (ONLY through logging-service)
 log_message() {
     local message="$1"
     local level="${2:-INFO}"
@@ -38,7 +38,7 @@ log_message() {
 send_telegram() {
     local message="$1"
     
-    # Отправляем в топик RESTART (ID: 4) - telegram-sender сам логирует результат
+    # Send to RESTART topic (ID: 4) - telegram-sender logs the result itself
     "$TELEGRAM_SENDER" "$message" "4"
 }
 
@@ -120,5 +120,5 @@ sleep 30
 
 # Perform reboot
 log_message "Initiating system reboot - END OF LOG BEFORE RESTART"
-log_message "========================================================="
+log_message "======================================================="
 /sbin/shutdown -r now

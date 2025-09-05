@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# Улучшенный watchdog для Raspberry Pi 3B+ с Home Assistant
+# Enhanced watchdog for Raspberry Pi 3B+ with Home Assistant
 LOG_FILE="/var/log/ha-watchdog.log"
 FAILURE_FILE="/var/log/ha-failures.log"
 CONFIG_FILE="/etc/ha-watchdog/config"
 
-# Загрузка конфигурации
+# Load configuration
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
 else
-    # Значения по умолчанию
+    # Default values
     HOST="8.8.8.8"
     MEM_THRESHOLD_MB=80
     DISK_THRESHOLD_KB=500000
@@ -33,17 +33,17 @@ GATEWAY=$(ip route | awk '/default/ {print $3}')
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null
 mkdir -p "$(dirname "$FAILURE_FILE")" 2>/dev/null
 
-# Централизованное логирование ТОЛЬКО через logging-service
+# Centralized logging ONLY through logging-service
 LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
 if [[ -f "$LOGGING_SERVICE" ]] && [[ -r "$LOGGING_SERVICE" ]]; then
     source "$LOGGING_SERVICE" 2>/dev/null
     if ! command -v log_structured >/dev/null 2>&1; then
-        echo "ERROR: logging-service загружен, но функция log_structured недоступна" >&2
+        echo "ERROR: logging-service loaded, but log_structured function is not available" >&2
         exit 1
     fi
 else
-    echo "ERROR: Централизованный logging-service не найден: $LOGGING_SERVICE" >&2
-    echo "Система мониторинга требует logging-service для работы" >&2
+    echo "ERROR: Centralized logging-service not found: $LOGGING_SERVICE" >&2
+    echo "Monitoring system requires logging-service to operate" >&2
     exit 1
 fi
 
@@ -56,11 +56,11 @@ log() {
 log_failure() {
     local message="$1"
     
-    # Записываем failures через централизованный logging-service 
-    # в специальный файл /var/log/ha-failures.log (для ha-failure-notifier)
+    # Write failures through centralized logging-service 
+    # to special file /var/log/ha-failures.log (for ha-failure-notifier)
     log_structured "ha-failures" "ERROR" "FAILURE: $message"
     
-    # И дублируем в основной лог watchdog'a для отладки
+    # And duplicate to main watchdog log for debugging
     log "FAILURE: $message" "ERROR"
 }
 
@@ -83,13 +83,13 @@ check_gateway() {
 check_containers() {
     local failed=0
     
-    # Проверяем Docker daemon
+    # Check Docker daemon
     if ! docker info >/dev/null 2>&1; then
         log_failure "DOCKER_DAEMON_DOWN"
         ((failed++))
     fi
     
-    # Проверяем контейнеры
+    # Check containers
     for name in "${CONTAINERS[@]}"; do
         if ! docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null | grep -q true; then
             log_failure "CONTAINER_DOWN:$name"
@@ -101,7 +101,7 @@ check_containers() {
 }
 
 check_network_interface() {
-    # Закомментировано - избыточные проверки WiFi создают много шума
+    # Commented out - redundant WiFi checks create too much noise
     # if ! ip link show "$IFACE" 2>/dev/null | grep -q "state UP"; then
     #     log_failure "IFACE_DOWN:$IFACE"
     #     return 1
@@ -143,13 +143,13 @@ check_temperature() {
 check_services() {
     local failed=0
     
-    # Проверяем Home Assistant
+    # Check Home Assistant accessibility
     if [[ -n "$HA_PORT" ]] && ! timeout 5 bash -c "</dev/tcp/localhost/$HA_PORT" 2>/dev/null; then
         log_failure "HA_SERVICE_DOWN:$HA_PORT"
         ((failed++))
     fi
     
-    # Проверяем Node-RED
+    # Check Node-RED accessibility
     if [[ -n "$NODERED_PORT" ]] && ! timeout 5 bash -c "</dev/tcp/localhost/$NODERED_PORT" 2>/dev/null; then
         log_failure "NODERED_SERVICE_DOWN:$NODERED_PORT"
         ((failed++))
@@ -180,19 +180,19 @@ check_ssh_access() {
 check_tailscale_status() {
     local failed=0
     
-    # Проверяем Tailscale демон
+    # Check Tailscale daemon
     if ! systemctl is-active tailscaled >/dev/null 2>&1; then
         log_failure "TAILSCALE_DAEMON_DOWN"
         ((failed++))
     fi
     
-    # Проверяем VPN подключение
+    # Check VPN connectivity
     if ! tailscale status >/dev/null 2>&1; then
         log_failure "TAILSCALE_VPN_DOWN"
         ((failed++))
     fi
     
-    # Проверяем Funnel сервис
+    # Check Funnel service
     if ! systemctl is-active tailscale-funnel-ha >/dev/null 2>&1; then
         log_failure "TAILSCALE_FUNNEL_DOWN"
         ((failed++))
@@ -204,13 +204,13 @@ check_tailscale_status() {
 check_sd_card_health() {
     local failed=0
     
-    # Проверяем ошибки SD карты в dmesg
+    # Check SD card errors in dmesg
     if dmesg | tail -100 | grep -q -E "(mmc.*error|mmc.*timeout|mmc.*failed)"; then
         log_failure "SD_CARD_ERRORS"
         ((failed++))
     fi
     
-    # Проверяем только-для-чтения файловую систему
+    # Check read-only filesystem state
     if mount | grep -q "/ .*ro,"; then
         log_failure "FILESYSTEM_READONLY"
         ((failed++))
@@ -236,7 +236,7 @@ check_log_sizes() {
     local failed=0
     local max_size_bytes=$((MAX_LOG_SIZE_MB * 1024 * 1024))
     
-    # Проверяем важные лог файлы
+    # Check important log files for oversize condition
     for log_file in "/var/log/syslog" "/var/log/daemon.log" "$LOG_FILE" "$FAILURE_FILE"; do
         if [[ -f "$log_file" ]]; then
             local size=$(stat -c%s "$log_file" 2>/dev/null || echo 0)
@@ -253,7 +253,7 @@ check_log_sizes() {
 check_ntp_sync() {
     local failed=0
     
-    # Проверяем NTP синхронизацию (исправлено для systemd-timesyncd)
+    # Check NTP synchronization (systemd-timesyncd compatible)
     if command -v timedatectl >/dev/null 2>&1; then
         if ! timedatectl status | grep -q "System clock synchronized: yes"; then
             log_failure "NTP_NOT_SYNCED"
@@ -267,13 +267,13 @@ check_ntp_sync() {
 check_power_supply() {
     local failed=0
     
-    # Проверяем undervoltage в dmesg
+    # Check for undervoltage events in dmesg
     if dmesg | tail -50 | grep -q -i "under.*voltage"; then
         log_failure "UNDERVOLTAGE_DETECTED"
         ((failed++))
     fi
     
-    # Проверяем throttling
+    # Check CPU throttling flags
     if [[ -f "/sys/devices/platform/soc/soc:firmware/get_throttled" ]]; then
         local throttled=$(cat /sys/devices/platform/soc/soc:firmware/get_throttled 2>/dev/null || echo "0")
         if [[ "$throttled" != "0x0" ]] && [[ "$throttled" != "0" ]]; then
@@ -288,7 +288,7 @@ check_power_supply() {
 check_public_access() {
     local failed=0
     
-    # Проверяем доступность через Tailscale Funnel (если настроен)
+    # Check external accessibility via Tailscale Funnel (if configured)
     if systemctl is-active tailscale-funnel-ha >/dev/null 2>&1; then
         local funnel_url=$(tailscale funnel status 2>/dev/null | grep -o "https://[^/]*" | head -1)
         if [[ -n "$funnel_url" ]]; then
@@ -305,7 +305,7 @@ check_public_access() {
 check_ha_database() {
     local failed=0
     
-    # Проверяем размер базы данных HA
+    # Check Home Assistant database size
     if [[ -f "$HA_DB_PATH" ]]; then
         local db_size_mb=$(du -m "$HA_DB_PATH" 2>/dev/null | cut -f1)
         if [[ $db_size_mb -gt $HA_DB_MAX_SIZE_MB ]]; then
@@ -313,13 +313,13 @@ check_ha_database() {
             ((failed++))
         fi
         
-        # Проверяем целостность базы данных (быстрая проверка)
+    # Verify database integrity (quick check)
         if ! timeout 5 sqlite3 "$HA_DB_PATH" "PRAGMA integrity_check;" 2>/dev/null | grep -q "ok"; then
             log_failure "HA_DATABASE_CORRUPTED"
             ((failed++))
         fi
     else
-        # Попробуем найти БД через Docker inspect
+    # Try to locate DB inside container via docker exec
         local container_db_path=$(docker exec homeassistant find /config -name "home-assistant_v2.db" 2>/dev/null | head -1)
         if [[ -z "$container_db_path" ]]; then
             log_failure "HA_DATABASE_MISSING:$HA_DB_PATH"
@@ -333,7 +333,7 @@ check_ha_database() {
 check_swap_usage() {
     local failed=0
     
-    # Проверяем использование swap
+    # Check swap usage amount
     local swap_used_mb=$(free -m | awk '/Swap:/ {print $3}')
     if [[ $swap_used_mb -gt $SWAP_THRESHOLD_MB ]]; then
         log_failure "HIGH_SWAP_USAGE:${swap_used_mb}MB"
@@ -346,7 +346,7 @@ check_swap_usage() {
 check_wifi_signal() {
     local failed=0
     
-    # Проверяем силу WiFi сигнала (если используется WiFi)
+    # Check WiFi signal strength (if WiFi in use)
     if [[ "$IFACE" == "wlan0" ]] || [[ "$IFACE" == wlan* ]]; then
         if command -v iwconfig >/dev/null 2>&1; then
             local signal_level=$(iwconfig "$IFACE" 2>/dev/null | grep "Signal level" | sed 's/.*Signal level=\(-[0-9]*\).*/\1/')
@@ -367,45 +367,45 @@ check_wifi_signal() {
     return $failed
 }
 
-# Основная проверка
+# Main comprehensive check
 main() {
     log "Starting comprehensive system health check (19 components)" "INFO"
     
     local total_failures=0
     
-    # Базовые проверки
+    # Basic connectivity checks
     log "Running network connectivity checks..." "DEBUG"
     check_internet || ((total_failures++))
     check_gateway || ((total_failures++))
     check_network_interface || ((total_failures++))
     
-    # Ресурсы системы
+    # System resource checks
     log "Checking system resources..." "DEBUG"
     check_memory || ((total_failures++))
     check_disk || ((total_failures++))
     check_temperature || ((total_failures++))
     check_system_load || ((total_failures++))
     
-    # Сервисы и контейнеры
+    # Services and containers
     log "Verifying services and containers..." "DEBUG"
     check_containers || ((total_failures++))
     check_services || ((total_failures++))
     check_critical_systemd_services || ((total_failures++))
     
-    # Удаленный доступ
+    # Remote access services
     log "Testing remote access..." "DEBUG"
     check_ssh_access || ((total_failures++))
     check_tailscale_status || ((total_failures++))
-    # check_public_access || ((total_failures++))  # Отключено: Tailscale Funnel не настроен
+    # check_public_access || ((total_failures++))  # Disabled: Tailscale Funnel not configured
     
-    # Здоровье системы
+    # System health (storage, power, time, logs)
     log "Analyzing system health..." "DEBUG"
     check_sd_card_health || ((total_failures++))
     check_power_supply || ((total_failures++))
     check_ntp_sync || ((total_failures++))
     check_log_sizes || ((total_failures++))
     
-    # Дополнительные проверки
+    # Extended application-specific checks
     log "Running extended diagnostics..." "DEBUG"
     check_ha_database || ((total_failures++))
     check_swap_usage || ((total_failures++))

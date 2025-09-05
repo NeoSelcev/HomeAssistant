@@ -1,34 +1,34 @@
 # 🏠 Raspberry Pi Home Assistant Project Management Script
-# Управление проектом "умного дома" на Raspberry Pi
+# Smart home project management on Raspberry Pi
 
 param(
     [Parameter(Mandatory=$true)]
     [ValidateSet("connect", "status", "deploy", "backup", "logs", "restart", "update", "install", "check")]
     [string]$Action,
     
-    [string]$RpiIP = "192.168.1.21",   # IP вашей малинки
-    [int]$RpiPort = 22,                # SSH порт
-    [string]$RpiUser = "root",         # Пользователь
-    [string]$KeyPath = "$env:USERPROFILE\.ssh\id_ed25519"  # Путь к SSH ключу
+    [string]$RpiIP = "192.168.1.21",   # IP of your Raspberry Pi
+    [int]$RpiPort = 22,                # SSH port
+    [string]$RpiUser = "root",         # User
+    [string]$KeyPath = "$env:USERPROFILE\.ssh\id_ed25519"  # Path to SSH key
 )
 
-# Цвета для вывода
+# Colors for output
 function Write-Success { param($Message) Write-Host "✅ $Message" -ForegroundColor Green }
 function Write-Error { param($Message) Write-Host "❌ $Message" -ForegroundColor Red }
 function Write-Info { param($Message) Write-Host "ℹ️  $Message" -ForegroundColor Cyan }
 function Write-Warning { param($Message) Write-Host "⚠️  $Message" -ForegroundColor Yellow }
 
-# Проверка SSH ключа
+# SSH key check
 function Test-SSHKey {
     if (-not (Test-Path $KeyPath)) {
-        Write-Error "SSH ключ не найден: $KeyPath"
-        Write-Info "Создайте ключ командой: ssh-keygen -t ed25519 -f `"$KeyPath`""
+        Write-Error "SSH key not found: $KeyPath"
+        Write-Info "Create key with command: ssh-keygen -t ed25519 -f `"$KeyPath`""
         return $false
     }
     return $true
 }
 
-# Выполнение SSH команды
+# Execute SSH command
 function Invoke-SSHCommand {
     param([string]$Command, [string]$Description = "")
     
@@ -45,13 +45,13 @@ function Invoke-SSHCommand {
     
     & ssh $sshArgs
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Команда завершилась с ошибкой: $Command"
+        Write-Error "Command failed with error: $Command"
         return $false
     }
     return $true
 }
 
-# Копирование файлов на RPi
+# Copy files to RPi
 function Copy-ToRPi {
     param([string]$LocalPath, [string]$RemotePath, [string]$Description = "")
     
@@ -69,13 +69,13 @@ function Copy-ToRPi {
     
     & scp $scpArgs
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Ошибка копирования: $LocalPath -> $RemotePath"
+        Write-Error "Copy error: $LocalPath -> $RemotePath"
         return $false
     }
     return $true
 }
 
-# Копирование файлов с RPi
+# Copy files from RPi
 function Copy-FromRPi {
     param([string]$RemotePath, [string]$LocalPath, [string]$Description = "")
     
@@ -93,24 +93,24 @@ function Copy-FromRPi {
     
     & scp $scpArgs
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Ошибка копирования: $RemotePath -> $LocalPath"
+        Write-Error "Copy error: $RemotePath -> $LocalPath"
         return $false
     }
     return $true
 }
 
-# Действие: Подключение и проверка
+# Action: Connect and check
 function Connect-ToRPi {
-    Write-Info "🔌 Подключение к Raspberry Pi: $RpiUser@$RpiIP`:$RpiPort"
+    Write-Info "🔌 Connecting to Raspberry Pi: $RpiUser@$RpiIP`:$RpiPort"
     
     if (-not (Test-SSHKey)) { return }
     
     $commands = @(
-        @{ cmd = "hostname"; desc = "Проверка имени хоста" }
-        @{ cmd = "uptime"; desc = "Время работы системы" }
-        @{ cmd = "free -h"; desc = "Использование памяти" }
-        @{ cmd = "df -h /"; desc = "Использование диска" }
-        @{ cmd = "docker --version 2>/dev/null || echo 'Docker не установлен'"; desc = "Версия Docker" }
+        @{ cmd = "hostname"; desc = "Checking hostname" }
+        @{ cmd = "uptime"; desc = "System uptime" }
+        @{ cmd = "free -h"; desc = "Memory usage" }
+        @{ cmd = "df -h /"; desc = "Disk usage" }
+        @{ cmd = "docker --version 2>/dev/null || echo 'Docker not installed'"; desc = "Docker version" }
     )
     
     foreach ($cmd in $commands) {
@@ -119,22 +119,22 @@ function Connect-ToRPi {
     }
 }
 
-# Действие: Статус системы
+# Action: System status
 function Get-SystemStatus {
-    Write-Info "📊 Получение статуса системы..."
+    Write-Info "📊 Getting system status..."
     
     if (-not (Test-SSHKey)) { return }
     
     $statusScript = @"
 #!/bin/bash
-echo "=== 🖥️  ИНФОРМАЦИЯ О СИСТЕМЕ ==="
-echo "Хост: `$(hostname)"
-echo "Время работы: `$(uptime -p)"
-echo "Нагрузка: `$(uptime | awk -F'load average:' '{print `$2}')"
-echo "Температура CPU: `$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{print `$1/1000"°C"}' || echo 'Недоступно')"
+echo "=== 🖥️  SYSTEM INFORMATION ==="
+echo "Host: `$(hostname)"
+echo "Uptime: `$(uptime -p)"
+echo "Load: `$(uptime | awk -F'load average:' '{print `$2}')"
+echo "CPU Temperature: `$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{print `$1/1000"°C"}' || echo 'Unavailable')"
 echo ""
 
-echo "=== 💾 ПАМЯТЬ И ДИСК ==="
+echo "=== 💾 MEMORY AND DISK ==="
 free -h
 echo ""
 df -h / /boot
@@ -142,53 +142,53 @@ echo ""
 
 echo "=== 🐳 DOCKER ==="
 if command -v docker >/dev/null 2>&1; then
-    echo "Docker версия: `$(docker --version)"
-    echo "Статус Docker: `$(systemctl is-active docker)"
+    echo "Docker version: `$(docker --version)"
+    echo "Docker status: `$(systemctl is-active docker)"
     echo ""
-    echo "Контейнеры:"
+    echo "Containers:"
     docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 else
-    echo "Docker не установлен"
+    echo "Docker not installed"
 fi
 echo ""
 
-echo "=== 🔍 МОНИТОРИНГ ==="
+echo "=== 🔍 MONITORING ==="
 if systemctl list-timers | grep -q ha-watchdog; then
     echo "HA Watchdog: `$(systemctl is-active ha-watchdog.timer)"
     echo "HA Failure Notifier: `$(systemctl is-active ha-failure-notifier.timer)"
-    echo "Telegram Sender: `$([ -f /usr/local/bin/telegram-sender.sh ] && echo 'Установлен' || echo 'Не установлен')"
+    echo "Telegram Sender: `$([ -f /usr/local/bin/telegram-sender.sh ] && echo 'Installed' || echo 'Not installed')"
     echo ""
-    echo "Последние проверки:"
-    tail -5 /var/log/ha-watchdog.log 2>/dev/null || echo "Лог не найден"
+    echo "Recent checks:"
+    tail -5 /var/log/ha-watchdog.log 2>/dev/null || echo "Log not found"
 else
-    echo "Система мониторинга не установлена"
+    echo "Monitoring system not installed"
 fi
 echo ""
 
-echo "=== 🌐 СЕТЬ ==="
+echo "=== 🌐 NETWORK ==="
 ip addr show | grep -E "inet.*global" | awk '{print `$2, `$NF}'
 echo ""
-ping -c 1 8.8.8.8 >/dev/null 2>&1 && echo "Интернет: ✅ Доступен" || echo "Интернет: ❌ Недоступен"
+ping -c 1 8.8.8.8 >/dev/null 2>&1 && echo "Internet: ✅ Available" || echo "Internet: ❌ Unavailable"
 "@
 
     $statusScript | Invoke-SSHCommand -Command "cat > /tmp/status.sh && chmod +x /tmp/status.sh && /tmp/status.sh && rm /tmp/status.sh"
 }
 
-# Действие: Развертывание мониторинга
+# Action: Deploy monitoring
 function Deploy-Monitoring {
-    Write-Info "🚀 Развертывание системы мониторинга..."
+    Write-Info "🚀 Deploying monitoring system..."
     
     if (-not (Test-SSHKey)) { return }
     
-    # Создаем временную директорию
+    # Create temporary directory
     $tempDir = "/tmp/ha-monitoring-deploy"
-    Invoke-SSHCommand -Command "mkdir -p $tempDir" -Description "Создание временной директории"
+    Invoke-SSHCommand -Command "mkdir -p $tempDir" -Description "Creating temporary directory"
     
-    # Копируем файлы мониторинга
+    # Copy monitoring files
     $monitoringPath = ".\project\monitoring"
-    Copy-ToRPi -LocalPath "$monitoringPath\*" -RemotePath $tempDir -Description "Копирование файлов мониторинга"
+    Copy-ToRPi -LocalPath "$monitoringPath\*" -RemotePath $tempDir -Description "Copying monitoring files"
     
-    # Запускаем установку
+    # Run installation
     $installScript = @"
 #!/bin/bash
 cd $tempDir
@@ -198,19 +198,19 @@ chmod +x install.sh scripts/*.sh
 
     $installScript | Invoke-SSHCommand -Command "cat > /tmp/install_monitoring.sh && chmod +x /tmp/install_monitoring.sh && /tmp/install_monitoring.sh"
     
-    Write-Success "Развертывание завершено! Не забудьте настроить Telegram в /etc/telegram-sender/config"
+    Write-Success "Deployment completed! Don't forget to configure Telegram in /etc/telegram-sender/config"
 }
 
-# Действие: Резервное копирование
+# Action: System backup
 function Backup-System {
-    Write-Info "💾 Создание резервной копии конфигурации..."
+    Write-Info "💾 Creating configuration backup..."
     
     if (-not (Test-SSHKey)) { return }
     
     $backupDir = ".\backups\$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss')"
     New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
     
-    # Копируем важные конфигурации
+    # Copy important configurations
     $backupPaths = @(
         "/srv/home",
         "/etc/telegram-sender",
@@ -225,38 +225,38 @@ function Backup-System {
         Copy-FromRPi -RemotePath $path -LocalPath "$backupDir\$safePath" -Description "Backup: $path"
     }
     
-    Write-Success "Резервная копия создана: $backupDir"
+    Write-Success "Backup created: $backupDir"
 }
 
-# Действие: Просмотр логов
+# Action: View logs
 function Get-Logs {
-    Write-Info "📋 Получение логов системы..."
+    Write-Info "📋 Getting system logs..."
     
     if (-not (Test-SSHKey)) { return }
     
     $logScript = @"
 #!/bin/bash
-echo "=== 🔍 ЛОГИ WATCHDOG ==="
-tail -20 /var/log/ha-watchdog.log 2>/dev/null || echo "Лог не найден"
+echo "=== 🔍 WATCHDOG LOGS ==="
+tail -20 /var/log/ha-watchdog.log 2>/dev/null || echo "Log not found"
 echo ""
 
-echo "=== 🔧 ЛОГИ FAILURE NOTIFIER ==="
-tail -20 /var/log/ha-failure-notifier.log 2>/dev/null || echo "Лог не найден"
+echo "=== 🔧 FAILURE NOTIFIER LOGS ==="
+tail -20 /var/log/ha-failure-notifier.log 2>/dev/null || echo "Log not found"
 echo ""
 
-echo "=== 📢 ЛОГИ TELEGRAM SENDER ==="
-tail -20 /var/log/telegram-sender.log 2>/dev/null || echo "Лог не найден"
+echo "=== 📢 TELEGRAM SENDER LOGS ==="
+tail -20 /var/log/telegram-sender.log 2>/dev/null || echo "Log not found"
 echo ""
 
-echo "=== 🚨 ЛОГИ СБОЕВ ==="
-tail -20 /var/log/ha-failures.log 2>/dev/null || echo "Лог не найден"
+echo "=== 🚨 FAILURE LOGS ==="
+tail -20 /var/log/ha-failures.log 2>/dev/null || echo "Log not found"
 echo ""
 
-echo "=== 🐳 ЛОГИ DOCKER ==="
+echo "=== 🐳 DOCKER LOGS ==="
 journalctl -u docker --no-pager -l --lines=10
 echo ""
 
-echo "=== ⚙️  ЛОГИ SYSTEMD МОНИТОРИНГА ==="
+echo "=== ⚙️  SYSTEMD MONITORING LOGS ==="
 journalctl -u ha-watchdog.service --no-pager -l --lines=5
 journalctl -u ha-failure-notifier.service --no-pager -l --lines=5
 "@
@@ -264,168 +264,173 @@ journalctl -u ha-failure-notifier.service --no-pager -l --lines=5
     $logScript | Invoke-SSHCommand
 }
 
-# Действие: Перезапуск сервисов
+# Action: Restart services
 function Restart-Services {
-    Write-Info "🔄 Перезапуск сервисов..."
+    Write-Info "🔄 Restarting services..."
     
     if (-not (Test-SSHKey)) { return }
     
-    $commands = @(
-        @{ cmd = "systemctl restart ha-watchdog.timer"; desc = "Перезапуск HA Watchdog" }
-        @{ cmd = "systemctl restart ha-failure-notifier.timer"; desc = "Перезапуск HA Failure Notifier" }
-        @{ cmd = "cd /srv/home && docker compose restart"; desc = "Перезапуск Docker контейнеров" }
-    )
-    
-    foreach ($cmd in $commands) {
-        if (Invoke-SSHCommand -Command $cmd.cmd -Description $cmd.desc) {
-            Write-Success $cmd.desc
-        }
-    }
+    $restartScript = @"
+#!/bin/bash
+echo "🔄 Restarting Home Assistant services..."
+
+# Restart containers
+docker restart homeassistant nodered
+echo "✅ Containers restarted"
+
+# Restart monitoring services
+sudo systemctl restart ha-watchdog.timer ha-failure-notifier.timer
+echo "✅ Monitoring services restarted"
+
+echo "✅ All services restarted successfully"
+"@
+
+    $restartScript | Invoke-SSHCommand
 }
 
-# Действие: Обновление системы
+# Action: System update
 function Update-System {
-    Write-Info "📦 Обновление системы..."
+    Write-Info "📦 Updating system..."
     
     if (-not (Test-SSHKey)) { return }
     
     $updateScript = @"
 #!/bin/bash
-echo "Обновление пакетов..."
+echo "Updating packages..."
 apt update && apt upgrade -y
 
-echo "Обновление Docker образов..."
+echo "Updating Docker images..."
 cd /srv/home
 docker compose pull
 docker compose up -d
 
-echo "Очистка старых образов..."
+echo "Cleaning old images..."
 docker image prune -f
 
-echo "Обновление завершено!"
+echo "Update completed!"
 "@
 
-    $updateScript | Invoke-SSHCommand -Description "Выполнение обновления системы"
+    $updateScript | Invoke-SSHCommand -Description "Running system update"
 }
 
-# Действие: Установка базовой системы
+# Action: Install base system
 function Install-BaseSystem {
-    Write-Info "🔧 Установка базовой системы..."
+    Write-Info "🔧 Installing base system..."
     
     if (-not (Test-SSHKey)) { return }
     
-    # Копируем setup скрипты
-    Copy-ToRPi -LocalPath ".\project\setup\*" -RemotePath "/tmp/" -Description "Копирование установочных скриптов"
+    # Copy setup scripts
+    Copy-ToRPi -LocalPath ".\project\setup\*" -RemotePath "/tmp/" -Description "Copying installation scripts"
     
-    Invoke-SSHCommand -Command "chmod +x /tmp/*.sh && /tmp/rpi_auto_update_script.sh" -Description "Запуск установки базовой системы"
+    Invoke-SSHCommand -Command "chmod +x /tmp/*.sh && /tmp/rpi_auto_update_script.sh" -Description "Running base system installation"
 }
 
-# Действие: Комплексная проверка
+# Action: Comprehensive check
 function Check-Everything {
-    Write-Info "🔍 Комплексная проверка системы..."
+    Write-Info "🔍 Comprehensive system check..."
     
     if (-not (Test-SSHKey)) { return }
     
     $checkScript = @"
 #!/bin/bash
-echo "=== 🏥 ДИАГНОСТИКА СИСТЕМЫ ==="
+echo "=== 🏥 SYSTEM DIAGNOSTICS ==="
 echo ""
 
-# Проверка сетевой связности
-echo "🌐 СЕТЬ:"
-ping -c 1 8.8.8.8 >/dev/null 2>&1 && echo "  ✅ Интернет доступен" || echo "  ❌ Нет интернета"
-ping -c 1 \$(ip route | awk '/default/ {print \$3}') >/dev/null 2>&1 && echo "  ✅ Шлюз доступен" || echo "  ❌ Шлюз недоступен"
-ip link show wlan0 | grep -q "state UP" && echo "  ✅ WiFi активен" || echo "  ❌ WiFi неактивен"
+# Network connectivity check
+echo "🌐 NETWORK:"
+ping -c 1 8.8.8.8 >/dev/null 2>&1 && echo "  ✅ Internet available" || echo "  ❌ No internet"
+ping -c 1 \$(ip route | awk '/default/ {print \$3}') >/dev/null 2>&1 && echo "  ✅ Gateway accessible" || echo "  ❌ Gateway inaccessible"
+ip link show wlan0 | grep -q "state UP" && echo "  ✅ WiFi active" || echo "  ❌ WiFi inactive"
 echo ""
 
-# Проверка ресурсов
-echo "💻 РЕСУРСЫ:"
+# Resource check
+echo "💻 RESOURCES:"
 mem_free=\$(free -m | awk '/Mem:/ {print \$7}')
-[ \$mem_free -gt 100 ] && echo "  ✅ Памяти достаточно (\${mem_free}MB)" || echo "  ❌ Мало памяти (\${mem_free}MB)"
+[ \$mem_free -gt 100 ] && echo "  ✅ Memory sufficient (\${mem_free}MB)" || echo "  ❌ Low memory (\${mem_free}MB)"
 
 disk_free=\$(df / | awk 'NR==2 {print \$4}')
-[ \$disk_free -gt 500000 ] && echo "  ✅ Места достаточно (\$((disk_free/1024))MB)" || echo "  ❌ Мало места (\$((disk_free/1024))MB)"
+[ \$disk_free -gt 500000 ] && echo "  ✅ Disk space sufficient (\$((disk_free/1024))MB)" || echo "  ❌ Low disk space (\$((disk_free/1024))MB)"
 
 temp=\$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{print \$1/1000}')
 if [ ! -z "\$temp" ]; then
-    [ \$(echo "\$temp < 70" | bc) -eq 1 ] && echo "  ✅ Температура нормальная (\${temp}°C)" || echo "  ❌ Высокая температура (\${temp}°C)"
+    [ \$(echo "\$temp < 70" | bc) -eq 1 ] && echo "  ✅ Temperature normal (\${temp}°C)" || echo "  ❌ High temperature (\${temp}°C)"
 fi
 echo ""
 
-# Проверка Docker
+# Docker check
 echo "🐳 DOCKER:"
 if command -v docker >/dev/null 2>&1; then
-    systemctl is-active docker >/dev/null 2>&1 && echo "  ✅ Docker активен" || echo "  ❌ Docker неактивен"
+    systemctl is-active docker >/dev/null 2>&1 && echo "  ✅ Docker active" || echo "  ❌ Docker inactive"
     
     containers=("homeassistant" "nodered")
     for container in "\${containers[@]}"; do
         if docker inspect -f '{{.State.Running}}' "\$container" 2>/dev/null | grep -q true; then
-            echo "  ✅ \$container работает"
+            echo "  ✅ \$container running"
         else
-            echo "  ❌ \$container не работает"
+            echo "  ❌ \$container not running"
         fi
     done
 else
-    echo "  ❌ Docker не установлен"
+    echo "  ❌ Docker not installed"
 fi
 echo ""
 
-# Проверка портов
-echo "🚪 ПОРТЫ:"
-timeout 2 bash -c '</dev/tcp/localhost/8123' 2>/dev/null && echo "  ✅ Home Assistant (8123) доступен" || echo "  ❌ Home Assistant недоступен"
-timeout 2 bash -c '</dev/tcp/localhost/1880' 2>/dev/null && echo "  ✅ Node-RED (1880) доступен" || echo "  ❌ Node-RED недоступен"
+# Port check
+echo "🚪 PORTS:"
+timeout 2 bash -c '</dev/tcp/localhost/8123' 2>/dev/null && echo "  ✅ Home Assistant (8123) accessible" || echo "  ❌ Home Assistant inaccessible"
+timeout 2 bash -c '</dev/tcp/localhost/1880' 2>/dev/null && echo "  ✅ Node-RED (1880) accessible" || echo "  ❌ Node-RED inaccessible"
 echo ""
 
-# Проверка мониторинга
-echo "🔍 МОНИТОРИНГ:"
-systemctl is-active ha-watchdog.timer >/dev/null 2>&1 && echo "  ✅ Watchdog активен" || echo "  ❌ Watchdog неактивен"
-systemctl is-active ha-failure-notifier.timer >/dev/null 2>&1 && echo "  ✅ Failure Notifier активен" || echo "  ❌ Failure Notifier неактивен"
+# Monitoring check
+echo "🔍 MONITORING:"
+systemctl is-active ha-watchdog.timer >/dev/null 2>&1 && echo "  ✅ Watchdog active" || echo "  ❌ Watchdog inactive"
+systemctl is-active ha-failure-notifier.timer >/dev/null 2>&1 && echo "  ✅ Failure Notifier active" || echo "  ❌ Failure Notifier inactive"
 
-# Проверка нового централизованного Telegram сервиса
+# Check new centralized Telegram service
 if [ -f /etc/telegram-sender/config ]; then
     source /etc/telegram-sender/config
-    [ ! -z "\$TELEGRAM_BOT_TOKEN" ] && echo "  ✅ Telegram Sender настроен" || echo "  ⚠️  Telegram Sender не настроен"
-    [ -f /usr/local/bin/telegram-sender.sh ] && echo "  ✅ Telegram Sender скрипт установлен" || echo "  ❌ Telegram Sender скрипт отсутствует"
+    [ ! -z "\$TELEGRAM_BOT_TOKEN" ] && echo "  ✅ Telegram Sender configured" || echo "  ⚠️  Telegram Sender not configured"
+    [ -f /usr/local/bin/telegram-sender.sh ] && echo "  ✅ Telegram Sender script installed" || echo "  ❌ Telegram Sender script missing"
 else
-    echo "  ❌ Конфигурация Telegram Sender не найдена"
+    echo "  ❌ Telegram Sender configuration not found"
 fi
 echo ""
 
-echo "=== 📊 ИТОГОВЫЙ СТАТУС ==="
-echo "Время проверки: \$(date)"
+echo "=== 📊 FINAL STATUS ==="
+echo "Check time: \$(date)"
 "@
 
     $checkScript | Invoke-SSHCommand
 }
 
-# Главное меню
+# Main menu
 function Show-Menu {
     Write-Host @"
 🏠 Raspberry Pi Home Assistant Project Manager
 ══════════════════════════════════════════════
 
-Доступные действия:
-  connect   - Подключиться и проверить базовую информацию
-  status    - Получить детальный статус системы
-  deploy    - Развернуть систему мониторинга
-  backup    - Создать резервную копию конфигураций
-  logs      - Просмотреть логи системы
-  restart   - Перезапустить сервисы
-  update    - Обновить систему и Docker образы
-  install   - Установить базовую систему
-  check     - Комплексная проверка всех компонентов
+Available actions:
+  connect   - Connect and check basic information
+  status    - Get detailed system status
+  deploy    - Deploy monitoring system
+  backup    - Create configuration backups
+  logs      - View system logs
+  restart   - Restart services
+  update    - Update system and Docker images
+  install   - Install base system
+  check     - Comprehensive check of all components
 
-Параметры:
-  -RpiIP     IP адрес Raspberry Pi (по умолчанию: $RpiIP)
-  -RpiPort   SSH порт (по умолчанию: $RpiPort)
-  -RpiUser   SSH пользователь (по умолчанию: $RpiUser)
-  -KeyPath   Путь к SSH ключу (по умолчанию: $KeyPath)
+Parameters:
+  -RpiIP     Raspberry Pi IP address (default: $RpiIP)
+  -RpiPort   SSH port (default: $RpiPort)
+  -RpiUser   SSH user (default: $RpiUser)
+  -KeyPath   SSH key path (default: $KeyPath)
 
-Пример: .\manage.ps1 -Action connect -RpiIP 192.168.1.150
+Example: .\manage.ps1 -Action connect -RpiIP 192.168.1.150
 "@ -ForegroundColor Yellow
 }
 
-# Основная логика
+# Main logic
 switch ($Action) {
     "connect" { Connect-ToRPi }
     "status" { Get-SystemStatus }

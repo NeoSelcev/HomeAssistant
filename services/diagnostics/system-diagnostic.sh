@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# 🔍 Скрипт комплексной диагностики Raspberry Pi + Home Assistant
-# Создает детальный отчет о состоянии системы
+# 🔍 Comprehensive diagnostics script for Raspberry Pi + Home Assistant
+# Generates a detailed report about system state
 
 REPORT_FILE="/tmp/system_diagnostic_$(date +%Y%m%d_%H%M%S).txt"
 COLORED_OUTPUT=true
 
-# Цветной вывод
+# Colored output configuration
 if [[ "$COLORED_OUTPUT" == true ]]; then
     RED='\033[0;31m'
     GREEN='\033[0;32m'
@@ -45,7 +45,7 @@ log_check() {
 }
 
 check_basic_system() {
-    log_section "🖥️  БАЗОВАЯ ИНФОРМАЦИЯ О СИСТЕМЕ"
+    log_section "🖥️  BASIC SYSTEM INFORMATION"
     
     log_check "INFO" "Hostname: $(hostname)"
     log_check "INFO" "Uptime: $(uptime -p)"
@@ -61,9 +61,9 @@ check_basic_system() {
     if [[ -f /sys/class/thermal/thermal_zone0/temp ]]; then
         local temp=$(cat /sys/class/thermal/thermal_zone0/temp | awk '{print $1/1000}')
         if (( $(echo "$temp > 70" | bc -l) )); then
-            log_check "WARNING" "Temperature: ${temp}°C (высокая!)"
+            log_check "WARNING" "Temperature: ${temp}°C (high!)"
         elif (( $(echo "$temp > 60" | bc -l) )); then
-            log_check "WARNING" "Temperature: ${temp}°C (повышенная)"
+            log_check "WARNING" "Temperature: ${temp}°C (elevated)"
         else
             log_check "OK" "Temperature: ${temp}°C"
         fi
@@ -73,7 +73,7 @@ check_basic_system() {
 }
 
 check_resources() {
-    log_section "💾 РЕСУРСЫ СИСТЕМЫ"
+    log_section "💾 SYSTEM RESOURCES"
     
     # Memory
     local mem_info=$(free -h | grep Mem:)
@@ -86,9 +86,9 @@ check_resources() {
     log_check "INFO" "Memory Used: $mem_used"
     
     if [[ $mem_available_mb -lt 100 ]]; then
-        log_check "ERROR" "Memory Available: $mem_available (критически мало!)"
+        log_check "ERROR" "Memory Available: $mem_available (critically low!)"
     elif [[ $mem_available_mb -lt 200 ]]; then
-        log_check "WARNING" "Memory Available: $mem_available (мало)"
+        log_check "WARNING" "Memory Available: $mem_available (low)"
     else
         log_check "OK" "Memory Available: $mem_available"
     fi
@@ -104,9 +104,9 @@ check_resources() {
     log_check "INFO" "Disk Used: $disk_used"
     
     if [[ $disk_percent -gt 90 ]]; then
-        log_check "ERROR" "Disk Available: $disk_available ($disk_percent% used - критически мало!)"
+        log_check "ERROR" "Disk Available: $disk_available ($disk_percent% used - critically low!)"
     elif [[ $disk_percent -gt 80 ]]; then
-        log_check "WARNING" "Disk Available: $disk_available ($disk_percent% used - мало)"
+        log_check "WARNING" "Disk Available: $disk_available ($disk_percent% used - low)"
     else
         log_check "OK" "Disk Available: $disk_available ($disk_percent% used)"
     fi
@@ -114,7 +114,7 @@ check_resources() {
     # Load average
     local load_avg=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | sed 's/,//')
     if (( $(echo "$load_avg > 2.0" | bc -l) )); then
-        log_check "WARNING" "Load Average: $load_avg (высокая нагрузка)"
+        log_check "WARNING" "Load Average: $load_avg (high load)"
     else
         log_check "OK" "Load Average: $load_avg"
     fi
@@ -123,7 +123,7 @@ check_resources() {
 }
 
 check_network() {
-    log_section "🌐 СЕТЕВОЕ ПОДКЛЮЧЕНИЕ"
+    log_section "🌐 NETWORK CONNECTIVITY"
     
     # Interfaces
     local interfaces=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo)
@@ -249,7 +249,7 @@ check_docker() {
 }
 
 check_services() {
-    log_section "🚪 СЕРВИСЫ И ПОРТЫ"
+    log_section "🚪 SERVICES & PORTS"
     
     # Home Assistant
     if timeout 3 bash -c '</dev/tcp/localhost/8123' 2>/dev/null; then
@@ -276,7 +276,7 @@ check_services() {
 }
 
 check_monitoring() {
-    log_section "🔍 СИСТЕМА МОНИТОРИНГА"
+    log_section "🔍 MONITORING SYSTEM"
     
     # Check if monitoring is installed
     if [[ -f /usr/local/bin/ha-watchdog.sh ]]; then
@@ -485,7 +485,7 @@ check_monitoring() {
 }
 
 check_logging_service() {
-    log_section "📝 ЦЕНТРАЛИЗОВАННОЕ ЛОГИРОВАНИЕ"
+    log_section "📝 CENTRALIZED LOGGING"
     
     # Core logging service checks
     log_check "INFO" "--- Core Logging Service ---"
@@ -809,7 +809,7 @@ check_tailscale() {
 }
 
 check_security() {
-    log_section "🔒 БЕЗОПАСНОСТЬ"
+    log_section "🔒 SECURITY"
     
     # SSH configuration
     if [[ -f /etc/ssh/sshd_config ]]; then
@@ -914,7 +914,7 @@ check_security() {
 }
 
 check_recent_failures() {
-    log_section "📈 АНАЛИЗ ПОСЛЕДНИХ СБОЕВ"
+    log_section "📈 RECENT FAILURE ANALYSIS"
     
     local failure_log="/var/log/ha-failures.log"
     if [[ -f "$failure_log" ]]; then
@@ -970,7 +970,7 @@ check_recent_failures() {
 }
 
 check_performance() {
-    log_section "⚡ ПРОИЗВОДИТЕЛЬНОСТЬ"
+    log_section "⚡ PERFORMANCE"
     
     # CPU performance test
     log_check "INFO" "--- CPU Performance ---"
@@ -1032,7 +1032,7 @@ check_performance() {
 }
 
 generate_summary() {
-    log_section "📊 ИТОГОВЫЙ ОТЧЕТ"
+    log_section "📊 FINAL SUMMARY REPORT"
     
     local total_checks=$(grep -c "\[.*\]" "$REPORT_FILE")
     local ok_checks=$(grep -c "\[OK\]" "$REPORT_FILE")
@@ -1057,27 +1057,27 @@ generate_summary() {
     
     # Overall system health assessment
     if [[ $error_checks -eq 0 && $warning_checks -eq 0 ]]; then
-        log_check "OK" "СИСТЕМА В ОТЛИЧНОМ СОСТОЯНИИ! 🎉"
+        log_check "OK" "SYSTEM IN EXCELLENT CONDITION! 🎉"
     elif [[ $error_checks -eq 0 && $warning_checks -lt 5 ]]; then
-        log_check "WARNING" "Система в хорошем состоянии (есть предупреждения) ⚠️"
+        log_check "WARNING" "System in good condition (warnings present) ⚠️"
     elif [[ $error_checks -lt 3 ]]; then
-        log_check "WARNING" "СИСТЕМА ТРЕБУЕТ ВНИМАНИЯ ⚠️"
+        log_check "WARNING" "SYSTEM REQUIRES ATTENTION ⚠️"
     else
-        log_check "ERROR" "СИСТЕМА ТРЕБУЕТ НЕМЕДЛЕННОГО ВМЕШАТЕЛЬСТВА! 🚨"
+        log_check "ERROR" "SYSTEM REQUIRES IMMEDIATE INTERVENTION! 🚨"
     fi
     
     echo "" | tee -a "$REPORT_FILE"
     log_check "INFO" "Full report saved to: $REPORT_FILE"
 }
 
-# Главная функция
+# Main function
 main() {
-    echo -e "${CYAN}🔍 Запуск диагностики системы...${NC}"
-    echo "Отчет: $REPORT_FILE"
+    echo -e "${CYAN}🔍 Starting system diagnostics...${NC}"
+    echo "Report: $REPORT_FILE"
     echo ""
     
-    echo "=== ДИАГНОСТИКА RASPBERRY PI + HOME ASSISTANT ===" > "$REPORT_FILE"
-    echo "Дата: $(date)" >> "$REPORT_FILE"
+    echo "=== RASPBERRY PI + HOME ASSISTANT DIAGNOSTICS ===" > "$REPORT_FILE"
+    echo "Date: $(date)" >> "$REPORT_FILE"
     echo "" >> "$REPORT_FILE"
     
     check_basic_system
@@ -1094,17 +1094,17 @@ main() {
     generate_summary
     
     echo ""
-    echo -e "${GREEN}✅ Диагностика завершена!${NC}"
-    echo -e "${CYAN}📄 Отчет доступен в: $REPORT_FILE${NC}"
+    echo -e "${GREEN}✅ Diagnostics complete!${NC}"
+    echo -e "${CYAN}📄 Full report saved at: $REPORT_FILE${NC}"
 }
 
-# Проверка зависимостей
+# Dependency check
 if ! command -v bc >/dev/null 2>&1; then
-    echo "⚠️  Внимание: утилита 'bc' не найдена. Некоторые проверки могут работать некорректно."
+    echo "⚠️  Warning: 'bc' utility not found. Some checks may not work correctly."
 fi
 
 if ! command -v jq >/dev/null 2>&1; then
-    echo "⚠️  Внимание: утилита 'jq' не найдена. Проверка Tailscale будет ограничена."
+    echo "⚠️  Warning: 'jq' utility not found. Tailscale checks will be limited."
 fi
 
 main "$@"

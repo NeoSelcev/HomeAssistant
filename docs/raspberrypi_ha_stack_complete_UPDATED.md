@@ -264,7 +264,7 @@ timestamp:priority:message_type
 
 ### System Health Monitoring
 - **Scripts Location**: `/opt/ha-monitoring/scripts/`
-- **Config**: `/etc/ha-watchdog/config` (legacy), `/etc/telegram-sender/config` (новый)
+- **Config**: `/etc/ha-watchdog/config` (legacy), `/etc/telegram-sender/config` (new)
 - **Logs**: `/var/log/ha-*.log`, `/var/log/telegram-sender.log`
 
 #### telegram-sender.sh v1.0 (NEW - September 2025)
@@ -384,7 +384,7 @@ timestamp:priority:message_type
     restart: unless-stopped
 ```
 
-## 3. systemd службы
+## 3. systemd services
 
 ## 3. Tailscale Native Configuration
 
@@ -399,7 +399,7 @@ sudo ./restore-tailscale.sh
 
 #### tailscale-serve-ha.service
 ```ini
-# Цель: HTTPS прокси для HA через порт 8443
+# Goal: HTTPS proxy for HA via port 8443
 [Unit]
 Description=Tailscale Serve HTTPS for Home Assistant (port 8443)
 After=network.target docker.service tailscaled.service
@@ -417,7 +417,7 @@ WantedBy=multi-user.target
 
 #### tailscale-funnel-ha.service
 ```ini
-# Цель: Публичный HTTPS доступ из интернета
+# Goal: Public HTTPS access from the Internet
 [Unit]
 Description=Tailscale Funnel for Home Assistant (public HTTPS)
 After=network.target docker.service tailscaled.service
@@ -431,9 +431,9 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-## 4. Конфигурация Home Assistant
+## 4. Home Assistant Configuration
 
-### configuration.yaml (основа)
+### configuration.yaml (core)
 
 ```yaml
 default_config:
@@ -453,11 +453,11 @@ script: !include scripts.yaml
 scene: !include scenes.yaml
 ```
 
-### Расширения конфигурации:
+### Configuration extensions:
 
-- Telegram настроен через Node-RED с API токеном
-- В будущем можно подключить `telegram:` напрямую через UI-интеграции
-- Для TTS используется Google Translate:
+- Telegram is configured via Node-RED with an API token
+- In the future you can connect `telegram:` directly via UI integrations
+- Google Translate is used for TTS:
 
 ```yaml
 tts:
@@ -465,19 +465,19 @@ tts:
     service_name: google_say
 ```
 
-## 5. Интеграции и устройства
+## 5. Integrations and Devices
 
-- ✅ HACS (установлен вручную)
-- ✅ Sonoff (eWeLink) — 48 устройств через LAN/Cloud
-- ✅ Broadlink — работает (IR/RF передатчик)
+- ✅ HACS (installed manually)
+- ✅ Sonoff (eWeLink) — 48 devices via LAN/Cloud
+- ✅ Broadlink — functional (IR/RF transmitter)
 - ✅ Roomba — auto discovered
 - ✅ Weather, Sun, TTS, Backup
-- ⏳ HomeBridge — планируется подключение для интеграции с Siri
+- ⏳ HomeBridge — planned for Siri integration
 
 ## 6. Node-RED
 
-- Подключение к HA через WebSocket с токеном
-- Установленные паллеты:
+- Connected to HA via WebSocket with long-lived token
+- Installed palettes:
  - `node-red`
  - `node-red-contrib-home-assistant-websocket`
  - `node-red-contrib-influxdb`
@@ -488,7 +488,7 @@ tts:
  - `node-red-node-telegrambot`
  - `node-red-node-ui-table`
 
-### Пример потока:
+### Example Flow:
 
 ```json
 [
@@ -515,35 +515,35 @@ tts:
 ]
 ```
 
-## 7. Сеть и доступ
+## 7. Network and Access
 
-- Основная сеть: `192.168.1.0/24`
-- IoT подсети: `192.168.2.x`, `192.168.3.x`, `192.168.4.x`
-- Доступ к ним:
-  - Проброс портов на роутерах
-  - Node-RED как прокси
-  - План: static routes
+- Main network: `192.168.1.0/24`
+- IoT subnets: `192.168.2.x`, `192.168.3.x`, `192.168.4.x`
+- Access methods:
+  - Port forwarding on routers
+  - Node-RED as proxy
+  - Plan: static routes
 
-## 8. Отладка и мониторинг
+## 8. Debugging and Monitoring
 
-- Проверка Tailscale IP:
+- Check Tailscale IP:
   ```bash
   tailscale ip -4
   ```
-- Статус HA:
+- Home Assistant status:
   ```bash
   docker logs -f homeassistant
   ```
-- Проверка доступности HA:
+- Check HA availability:
   ```bash
   curl -v http://localhost:8123
   ```
 
-## 9. Известные проблемы
+## 9. Known Issues
 
-- ⚠️ YAML-конфигурация Telegram устарела
-- ⚠️ SSL-ошибка при доступе через Funnel без сертификата
-- ⚠️ HA Mobile может терять соединение через VPN
+- ⚠️ Telegram YAML configuration is deprecated (migrate to UI integration)
+- ⚠️ SSL error when using Funnel without certificate
+- ⚠️ HA Mobile may occasionally lose VPN connectivity
 
 ## Recent Updates (August 2025)
 
@@ -611,39 +611,39 @@ INFO (INFO/DEBUG):       3 events max   # Low priority status
 - `metadata.txt` - Enhanced rotation detection
 - `throttle.txt` - Smart notification throttling
 
-## 10. Рекомендации и ToDo
+## 10. Recommendations and ToDo
 
-- 🔐 Включить авторизацию и роли в HA
-- 🧩 Настроить HomeBridge и интеграцию с Siri
-- 📡 Расширить Telegram-уведомления (движение, температура, события)
-- 🌍 Использовать Tailscale DNS или домен через CNAME
-- 🧪 Добавить интеграции: Zigbee2MQTT (через USB), ESPHome, MQTT-брокер
-- 🔄 Настроить snapshot-резервирование
-- 📲 Автоматизировать backup на внешний диск или Google Drive
-- 🧠 Создать структуру автоматизаций в Node-RED: уведомления, ночной режим, отпугивание и т.д.
+- 🔐 Enable authentication and role management in HA
+- 🧩 Configure HomeBridge for Siri integration
+- 📡 Expand Telegram notifications (motion, temperature, events)
+- 🌍 Use Tailscale DNS or domain via CNAME
+- 🧪 Add integrations: Zigbee2MQTT (USB), ESPHome, MQTT broker
+- 🔄 Implement snapshot scheduling
+- 📲 Automate backups to external disk or Google Drive
+- 🧠 Build structured Node-RED automations: notifications, night mode, deterrence, etc.
 
 ---
 
-## 📦 Watchdog и система оповещений
+## 📦 Watchdog and Notification System
 
 ### `ha-watchdog.sh`
 
-Скрипт мониторит:
+The script monitors:
 
-- доступность Home Assistant (`http://localhost:8123`)
-- работоспособность всех Docker-контейнеров
-- системную нагрузку (`uptime`)
-- соединение с интернетом (`ping 8.8.8.8`)
+- Home Assistant availability (`http://localhost:8123`)
+- Docker container health
+- System load (`uptime`)
+- Internet connectivity (`ping 8.8.8.8`)
 
-Логи:
-- `/var/log/ha-watchdog.log` — история запусков и нагрузка
-- `/var/log/ha-failures.log` — список обнаруженных проблем
+Logs:
+- `/var/log/ha-watchdog.log` — run history and load metrics
+- `/var/log/ha-failures.log` — detected issues list
 
-Контроль одиночного запуска реализован через `/tmp/ha-watchdog-state.txt`.
+Single-run control handled via `/tmp/ha-watchdog-state.txt`.
 
 ### `ha-watchdog.service`
 
-Юнит systemd для запуска watchdog-а при загрузке и с перезапуском:
+Systemd unit to launch the watchdog on boot with restart:
 
 ```ini
 [Unit]
@@ -662,81 +662,81 @@ WantedBy=multi-user.target
 
 ---
 
-### 🧹 Logrotate для логов
+### 🧹 Logrotate for Logs
 
-**Автоматическая настройка:** Logrotate конфигурируется автоматически при установке через `install.sh`
+**Automatic setup:** Logrotate is configured automatically via `install.sh`
 
-**Конфигурации установлены:**
+**Installed configurations:**
 
-- `/etc/logrotate.d/ha-monitoring` - для логов системы мониторинга
-- `/etc/logrotate.d/homeassistant` - для логов Home Assistant
-- `/etc/logrotate.d/fail2ban` - для логов Fail2ban (52 недели)  
-- `/etc/logrotate.d/ufw` - для логов UFW Firewall (30 дней)
-- `/etc/systemd/journald.conf` - ограничения systemd journal (500MB)
+- `/etc/logrotate.d/ha-monitoring` - monitoring system logs
+- `/etc/logrotate.d/homeassistant` - Home Assistant logs
+- `/etc/logrotate.d/fail2ban` - Fail2ban logs (52 weeks retention)  
+- `/etc/logrotate.d/ufw` - UFW Firewall logs (30 days retention)
+- `/etc/systemd/journald.conf` - systemd journal limits (500MB)
 
-**Примечание о SSH логах:** SSH использует systemd journald, поэтому отдельная логротация не требуется - логи автоматически ротируются через системный журнал.
+**SSH Logs Note:** SSH uses systemd journald so no separate logrotate config is needed.
 
-**Параметры ротации:**
+**Rotation parameters:**
 
 ```bash
-# Высокочастотные логи (каждые 2-5 минут)
+# High-frequency logs (every 2-5 minutes)
 /var/log/ha-watchdog.log, /var/log/ha-failure-notifier.log
-├─ Размер: 5MB → ротация  
-├─ Архив: 10 файлов (50MB общий лимит)
-├─ Частота: ежедневно
-└─ Сжатие: да
+├─ Size: 5MB → rotate  
+├─ Archive: 10 files (50MB total limit)
+├─ Frequency: daily
+└─ Compression: enabled
 
-# Средние логи  
+# Medium-frequency logs  
 /var/log/ha-failures.log, /var/log/ha-reboot.log
-├─ Размер: 10MB → ротация
-├─ Архив: 5 файлов  
-└─ Частота: еженедельно
+├─ Size: 10MB → rotate
+├─ Archive: 5 files  
+└─ Frequency: weekly
 
 # Home Assistant
 /srv/homeassistant/home-assistant.log
-├─ Размер: 50MB → ротация
-├─ Архив: 7 файлов
-├─ Метод: copytruncate (безопасно для HA)
-└─ Частота: ежедневно
+├─ Size: 50MB → rotate
+├─ Archive: 7 files
+├─ Method: copytruncate (safe for HA)
+└─ Frequency: daily
 ```
 
-**Управление через ha-monitoring-control:**
+**Management via ha-monitoring-control:**
 
 ```bash
-ha-monitoring-control log-sizes      # размеры всех логов
-ha-monitoring-control rotate-logs    # принудительная ротация  
-ha-monitoring-control clean-journal  # очистка systemd journal
+ha-monitoring-control log-sizes      # show sizes of all logs
+ha-monitoring-control rotate-logs    # force rotation  
+ha-monitoring-control clean-journal  # clean systemd journal
 ```
 
-**Автоматическая ротация - systemd timer:**
+**Automatic rotation - systemd timer:**
 
 ```bash
-# Проверка статуса logrotate
+# Check logrotate status
 systemctl status logrotate.timer
 ● logrotate.timer - Daily rotation of log files
   Active: active (waiting)
-  Trigger: ежедневно в 00:00 UTC (полночь)
+  Trigger: daily at 00:00 UTC (midnight)
   
-# Следующий запуск
+# Next run
 systemctl list-timers logrotate.timer
 ```
 
-- **Расписание**: Ежедневно в 00:00 (полночь) через systemd timer
-- **Метод**: `logrotate.timer` → `logrotate.service` (современная замена cron)
-- **Настройки**: `/lib/systemd/system/logrotate.timer` (OnCalendar=daily)
-- **Автозапуск**: включен при загрузке системы
+- **Schedule**: Daily at 00:00 via systemd timer
+- **Method**: `logrotate.timer` → `logrotate.service` (modern cron alternative)
+- **Settings**: `/lib/systemd/system/logrotate.timer` (OnCalendar=daily)
+- **Autostart**: enabled at system boot
 
 ---
 
 ### 🔔 `ha-alert.sh`
 
-Этот скрипт запускается отдельно и сканирует `ha-failures.log`, чтобы:
+This script runs separately and scans `ha-failures.log` to:
 
-- определить новые проблемы
-- отправить сообщение в Telegram (или другую систему)
-- вести журнал отправленных алертов (`/var/log/ha-alerted-ids.txt`)
+- identify new issues
+- send a message to Telegram (or other system)
+- maintain a record of sent alerts (`/var/log/ha-alerted-ids.txt`)
 
-Пример:
+Example:
 
 ```bash
 #!/bin/bash
@@ -755,48 +755,48 @@ while read -r line; do
 done < "$FAILURE_LOG"
 ```
 
-Создай systemd таймер или cron-задачу для регулярного запуска.
+Create a systemd timer or cron job for periodic execution.
 
 ---
 
-## � System Configuration
+## 🛠️ System Configuration
 
 ### Swap Configuration
 ```bash
-# Создание 2GB swap файла для улучшения производительности
+# Create 2GB swap file for improved performance
 fallocate -l 2G /swapfile
 chmod 600 /swapfile
 mkswap /swapfile
 swapon /swapfile
 
-# Добавление в fstab для автозагрузки
+# Add to fstab for auto-mount
 echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-# Проверка результата
+# Verify result
 free -h
 swapon --show
 ```
 
 ### Service Management
 ```bash
-# Установка и управление сервисами мониторинга
+# Install and manage monitoring services
 cd /path/to/project
 cp services/ha-monitoring-services-control.sh /usr/local/bin/
 chmod +x /usr/local/bin/ha-monitoring-services-control.sh
 
-# Использование
-ha-monitoring-services-control.sh full    # Полная настройка
-ha-monitoring-services-control.sh restart # Перезапуск сервисов
-ha-monitoring-services-control.sh status  # Проверка статуса
+# Usage
+ha-monitoring-services-control.sh full    # Full setup
+ha-monitoring-services-control.sh restart # Restart services
+ha-monitoring-services-control.sh status  # Check status
 ```
 
-## �🔑 SSH ключи доступа
+## 🔑 SSH Access Keys
 
-Публичный ключ:
+Public key (example placeholder - replace with your own):
 ```
 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHNKOdVcE9EhXsjGimG00N86zo+ocaIzCx+0/KFTMiZU neoselcev@LenovoP14sgen2-Slava
 ```
-Приватный ключ:
+Private key:
 ```
 -----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
@@ -809,14 +809,14 @@ QFBgc=
 ```
 ---
 
-## 🔗 Быстрые SSH подключения
+## 🔗 Quick SSH Connections
 
-### Настройка ~/.ssh/config
+### ~/.ssh/config Setup
 
-Для удобного подключения добавьте в файл `~/.ssh/config`:
+For convenience add to `~/.ssh/config`:
 
 ```bash
-# Raspberry Pi Home Assistant (Локальная сеть)
+# Raspberry Pi Home Assistant (Local network)
 Host rpi
     HostName 192.168.1.21
     Port 22
@@ -827,7 +827,7 @@ Host rpi
     ServerAliveInterval 60
     ServerAliveCountMax 3
 
-# Raspberry Pi через VPN (Tailscale)
+# Raspberry Pi via VPN (Tailscale)
 Host rpi-vpn
     HostName 100.103.54.125
     Port 22
@@ -837,28 +837,28 @@ Host rpi-vpn
     UserKnownHostsFile /dev/null
 ```
 
-### Создание SSH ключа
+### Create SSH Key
 
 ```bash
-# Создаем приватный ключ (уже есть выше в документе)
-# Устанавливаем правильные права доступа
+# Generate private key (already shown above)
+# Set correct permissions
 chmod 600 ~/.ssh/raspberry_pi_key
 ```
 
-### Использование
+### Usage
 
 ```bash
-# Подключение по локальной сети
+# Local network
 ssh rpi
 
-# Подключение через VPN (из любой точки мира)
+# VPN connection (global access)
 ssh rpi-vpn
 
-# Копирование файлов
+# File copy
 scp ./monitoring/install.sh rpi:/tmp/
 scp -r ./monitoring/ rpi:/srv/home/
 
-# Выполнение команд
+# Execute commands
 ssh rpi "docker ps"
 ssh rpi-vpn "systemctl status ha-watchdog"
 ```

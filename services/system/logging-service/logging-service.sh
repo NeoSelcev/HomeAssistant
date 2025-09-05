@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# 📝 Централизованный сервис структурированного логирования
-# Используется для единообразного форматирования и ротации логов
-# Автор: Smart Home Monitoring System
-# Версия: 1.0
+# 📝 Centralized structured logging service
+# Used for unified formatting and log rotation
+# Author: Smart Home Monitoring System
+# Version: 1.0
 
 CONFIG_FILE="/etc/logging-service/config"
 
-# Загрузка конфигурации
+# Load configuration
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
 else
@@ -15,48 +15,48 @@ else
     exit 1
 fi
 
-# Значения по умолчанию
+# Default values
 LOG_FORMAT="${LOG_FORMAT:-plain}"  # plain, json, syslog
 MAX_MESSAGE_LENGTH="${MAX_MESSAGE_LENGTH:-2048}"
 ENABLE_REMOTE_LOGGING="${ENABLE_REMOTE_LOGGING:-false}"
 
-# Специальный лог для самого logging-service (избегаем рекурсии)
+# Special log for logging-service itself (avoid recursion)
 LOGGING_SERVICE_LOG="${LOGGING_SERVICE_LOG:-/var/log/logging-service.log}"
 ENABLE_SELF_LOGGING="${ENABLE_SELF_LOGGING:-true}"
 SELF_LOG_LEVEL="${SELF_LOG_LEVEL:-INFO}"
 
-# Функция прямого логирования для logging-service (без рекурсии)
+# Direct logging function for logging-service (no recursion)
 log_self() {
     local level="$1"
     local message="$2"
     
-    # Проверяем, включено ли самологирование и соответствует ли уровень
+    # Check if self-logging is enabled and level matches
     if [[ "$ENABLE_SELF_LOGGING" != "true" ]]; then
         return 0
     fi
     
-    # Фильтрация по уровню самологирования
+    # Filter by self-logging level
     case "$SELF_LOG_LEVEL" in
         "ERROR") [[ "$level" == "ERROR" ]] || return 0 ;;
         "WARN") [[ "$level" =~ ^(ERROR|WARN)$ ]] || return 0 ;;
         "INFO") [[ "$level" =~ ^(ERROR|WARN|INFO)$ ]] || return 0 ;;
-        "DEBUG") ;; # Логировать всё
+    "DEBUG") ;; # Log everything
     esac
     
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     local hostname=$(hostname)
     local pid=$$
     
-    # Простой формат для самологирования
+    # Simple format for self-logging
     echo "$timestamp [$level] [logging-service] [PID:$pid] $message" >> "$LOGGING_SERVICE_LOG"
 }
 
-# Функция структурированного логирования
+# Structured logging function
 log_structured() {
     local service="$1"
     local level="$2"     # DEBUG, INFO, WARN, ERROR, CRITICAL
     local message="$3"
-    local extra_data="$4"  # JSON string для дополнительных данных
+    local extra_data="$4"  # JSON string for extra fields
     
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     local hostname=$(hostname)
@@ -64,7 +64,7 @@ log_structured() {
     local caller_pid="$PPID"
     local caller_process="$(ps -o comm= -p $PPID 2>/dev/null || echo 'unknown')"
     
-    # Обрезка сообщения если слишком длинное
+    # Truncate message if too long
     if [[ ${#message} -gt $MAX_MESSAGE_LENGTH ]]; then
         message="${message:0:$((MAX_MESSAGE_LENGTH-20))}...[TRUNCATED]"
     fi
@@ -98,53 +98,53 @@ EOF
             ;;
     esac
     
-    # Определение лог-файла для сервиса
+    # Determine log file for service
     local log_file=$(get_log_file "$service")
     
-    # Самологирование важных событий (без рекурсии)
+    # Self-log important events (no recursion)
     if [[ "$level" == "ERROR" ]] || [[ "$level" == "CRITICAL" ]]; then
         log_self "INFO" "Processing $level event from $service: $message"
     fi
     
-    # Запись в файл
+    # Write to file
     echo "$log_entry" >> "$log_file"
     
-    # Проверка успешности записи
+    # Verify write success
     if [[ $? -ne 0 ]]; then
         log_self "ERROR" "Failed to write to log file: $log_file"
         return 1
     fi
     
-    # Удаленное логирование (если включено)
+    # Remote logging (if enabled)
     if [[ "$ENABLE_REMOTE_LOGGING" == "true" ]] && [[ -n "$REMOTE_LOG_ENDPOINT" ]]; then
         log_self "DEBUG" "Sending log to remote endpoint: $REMOTE_LOG_ENDPOINT"
         send_remote_log "$log_entry" "$service" "$level" &
     fi
     
-    # Уведомления для критических событий
+    # Notifications for critical events
     if [[ "$level" == "CRITICAL" ]] && [[ -n "$CRITICAL_NOTIFICATION_COMMAND" ]]; then
         log_self "INFO" "Sending critical notification for: $service"
         $CRITICAL_NOTIFICATION_COMMAND "$service" "$message" &
     fi
 }
 
-# Определение лог-файла по сервису
-# ✅ ВАЖНО: Каждый сервис = отдельный лог-файл (НЕ централизация!)
-# Это сделано для сохранения индивидуальности и удобства анализа
+# Define log file by service
+# ✅ IMPORTANT: Each service = separate log file (NOT centralization!)
+# This is done to preserve individuality and convenience of analysis
 get_log_file() {
     local service="$1"
     case "$service" in
-        "ha-watchdog") echo "/var/log/ha-watchdog.log" ;;              # ✅ Индивидуальный лог для мониторинга
-        "ha-failure-notifier") echo "/var/log/ha-failure-notifier.log" ;; # ✅ Индивидуальный лог для сбоев
-        "ha-failures") echo "/var/log/ha-failures.log" ;;              # ✅ Специальный файл для failure событий
-        "telegram-sender") echo "/var/log/telegram-sender.log" ;;      # ✅ Индивидуальный лог для Telegram
-        "update-checker") echo "/var/log/ha-update-checker.log" ;;     # ✅ Индивидуальный лог для обновлений
-        "nightly-reboot") echo "/var/log/ha-reboot.log" ;;             # ✅ Индивидуальный лог для перезагрузок
-        *) echo "/var/log/ha-${service}.log" ;;                        # ✅ Паттерн для новых сервисов
+        "ha-watchdog") echo "/var/log/ha-watchdog.log" ;;              # ✅ Individual log for monitoring
+        "ha-failure-notifier") echo "/var/log/ha-failure-notifier.log" ;; # ✅ Individual log for failures
+        "ha-failures") echo "/var/log/ha-failures.log" ;;              # ✅ Special file for failure events
+        "telegram-sender") echo "/var/log/telegram-sender.log" ;;      # ✅ Individual log for Telegram
+        "update-checker") echo "/var/log/ha-update-checker.log" ;;     # ✅ Individual log for updates
+        "nightly-reboot") echo "/var/log/ha-reboot.log" ;;             # ✅ Individual log for reboots
+        *) echo "/var/log/ha-${service}.log" ;;                        # ✅ Pattern for new services
     esac
 }
 
-# Преобразование уровня в syslog severity
+# Convert level to syslog severity
 get_syslog_severity() {
     case "$1" in
         "DEBUG") echo "7" ;;
@@ -156,7 +156,7 @@ get_syslog_severity() {
     esac
 }
 
-# Отправка на удаленный лог-сервер
+# Send to remote log server
 send_remote_log() {
     local log_entry="$1"
     local service="$2"
@@ -179,7 +179,7 @@ send_remote_log() {
     fi
 }
 
-# Функция для простого логирования (обратная совместимость)
+# Simple logging function (backward compatibility)
 log_simple() {
     local service="$1"
     local message="$2"
@@ -188,7 +188,7 @@ log_simple() {
     log_structured "$service" "$level" "$message"
 }
 
-# Функция для логирования с метриками
+# Logging function with metrics
 log_with_metrics() {
     local service="$1"
     local level="$2"
@@ -208,9 +208,9 @@ log_with_metrics() {
     log_structured "$service" "$level" "$message" "$extra_data"
 }
 
-# Основная логика (если скрипт запущен напрямую)
+# Main logic (if script is run directly)
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    # Создание лог-файла для самого logging-service если не существует
+    # Create log file for logging-service itself if it does not exist
     if [[ ! -f "$LOGGING_SERVICE_LOG" ]]; then
         mkdir -p "$(dirname "$LOGGING_SERVICE_LOG")" 2>/dev/null
         touch "$LOGGING_SERVICE_LOG"

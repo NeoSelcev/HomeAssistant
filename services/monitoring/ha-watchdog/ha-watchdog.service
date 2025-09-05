@@ -1,5 +1,5 @@
 [Unit]
-Description=HA Watchdog: следит за состоянием системы
+Description=HA Watchdog: monitors system health
 Documentation=man:systemd.service(5)
 After=network-online.target docker.service
 Wants=network-online.target

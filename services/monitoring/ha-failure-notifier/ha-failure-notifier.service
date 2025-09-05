@@ -1,5 +1,5 @@
 [Unit]
-Description=HA Failure Notifier: обрабатывает сбои и отправляет Telegram уведомления
+Description=HA Failure Notifier: processes failures and sends Telegram notifications
 Documentation=man:systemd.service(5)
 After=network-online.target ha-watchdog.service
 Wants=network-online.target

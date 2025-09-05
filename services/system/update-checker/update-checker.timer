@@ -1,5 +1,5 @@
 [Unit]
-Description=Запуск HA Update Checker по будням в 9:00
+Description=Run HA Update Checker on weekdays at 09:00
 Requires=update-checker.service
 
 [Timer]
