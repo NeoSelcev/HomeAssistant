@@ -1,0 +1,27 @@
+[Unit]
+Description=System Diagnostic Daily Report
+Documentation=man:systemd.service(5)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/bin/system-diagnostic-startup.sh
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=300
+RemainAfterExit=no
+
+# Security settings
+PrivateTmp=false
+ProtectSystem=false
+ProtectHome=false
+NoNewPrivileges=false
+
+# Restart policy
+Restart=no
+
+[Install]
+WantedBy=default.target

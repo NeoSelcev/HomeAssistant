@@ -1,0 +1,31 @@
+# Logrotate configuration for system-diagnostic-startup service
+# Location: /etc/logrotate.d/system-diagnostic-startup
+
+/var/log/system-diagnostic-startup.log {
+    # Rotation frequency and size
+    weekly
+    maxsize 5M
+    
+    # Number of rotations to keep
+    rotate 4
+    
+    # Compression settings
+    compress
+    delaycompress
+    
+    # File permissions and ownership
+    create 644 root root
+    
+    # Handle missing files gracefully
+    missingok
+    notifempty
+    
+    # Rotation behavior
+    copytruncate
+    
+    # Post-rotation hook
+    postrotate
+        # Send SIGUSR1 to rsyslog to reopen log files
+        /bin/kill -USR1 $(cat /var/run/rsyslogd.pid 2>/dev/null) 2>/dev/null || true
+    endscript
+}
