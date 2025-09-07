@@ -52,6 +52,7 @@ get_topic_name() {
         "$TELEGRAM_TOPIC_UPDATES") echo "updates" ;;
         "$TELEGRAM_TOPIC_RESTART") echo "restart" ;;
         "$TELEGRAM_TOPIC_SYSTEM_DIAGNOSTIC") echo "system_diagnostic" ;;
+        "$TELEGRAM_TOPIC_BACKUP") echo "backup" ;;
         "") echo "root" ;;
         *) echo "topic_$topic_id" ;;
     esac

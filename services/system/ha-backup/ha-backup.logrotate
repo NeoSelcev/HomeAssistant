@@ -1,0 +1,31 @@
+# Logrotate configuration for ha-backup service
+# Location: /etc/logrotate.d/ha-backup
+
+/var/log/ha-backup.log {
+    # Rotation frequency and size
+    weekly
+    maxsize 10M
+    
+    # Number of rotations to keep
+    rotate 8
+    
+    # Compression settings
+    compress
+    delaycompress
+    
+    # File permissions and ownership
+    create 644 root root
+    
+    # Handle missing files gracefully
+    missingok
+    notifempty
+    
+    # Rotation behavior
+    copytruncate
+    
+    # Post-rotation hook
+    postrotate
+        # Send SIGUSR1 to rsyslog to reopen log files
+        /bin/kill -USR1 $(cat /var/run/rsyslogd.pid 2>/dev/null) 2>/dev/null || true
+    endscript
+}

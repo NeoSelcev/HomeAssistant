@@ -1,0 +1,16 @@
+[Unit[Timer]
+# Run daily at 2:00 AM (before nightly reboot at 3:30 AM)
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+RandomizedDelaySec=300cription=Home Assistant Backup Timer
+Documentation=man:systemd.timer(5)
+Requires=ha-backup.service
+
+[Timer]
+# TEMPORARY: Run at 09:26:00 for testing
+OnCalendar=*-*-* 09:26:00
+Persistent=true
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target
