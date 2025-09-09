@@ -513,6 +513,8 @@ sudo ./install.sh
 
 ### **2. Configure Telegram Bot**
 
+**Check telegram updates on https://api.telegram.org/bot8185210583:AAG8wijjUfAFHTyP-rzI1WpVyxcJEJQAIXQ/getUpdates**
+
 **New centralized configuration** (via telegram-sender service):
 
 1. Create a bot via @BotFather in Telegram

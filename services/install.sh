@@ -27,15 +27,21 @@ fi
 # Ensure diagnostic aliases (idempotent)
 USER_HOME="/home/${SUDO_USER:-pi}"
 if [[ -d "$USER_HOME" ]]; then
-    if ! grep -q 'ha-system-health-check.sh' "$USER_HOME/.bashrc" 2>/dev/null; then
+    if ! grep -q 'system-diagnostic.sh' "$USER_HOME/.bashrc" 2>/dev/null; then
         echo "📋 Adding diagnostic aliases to user shell profile..."
         cat >> "$USER_HOME/.bashrc" << 'EOF'
 
-# Diagnostic aliases for HA monitoring
-alias health-check="ha-system-health-check.sh"
-alias health-quick="ha-system-health-check.sh --quick"
-alias health-monitor="ha-system-health-check.sh --monitor"
-alias diagnostic="ha-monitoring-control diagnostic"
+# System diagnostic aliases for HA monitoring
+alias sysdiag="system-diagnostic.sh"
+alias diag="system-diagnostic.sh"
+alias diagnostic="system-diagnostic.sh"
+alias syscheck="system-diagnostic.sh --quick"
+alias fullcheck="system-diagnostic.sh --full"
+alias ha-status="ha-monitoring-control status"
+alias ha-logs="ha-monitoring-control logs"
+alias ha-start="ha-monitoring-control start"
+alias ha-stop="ha-monitoring-control stop"
+alias ha-restart="ha-monitoring-control restart"
 EOF
         chown ${SUDO_USER:-pi}:${SUDO_USER:-pi} "$USER_HOME/.bashrc"
         echo "✅ Diagnostic aliases added"
@@ -84,9 +90,9 @@ HA_DIR="/opt/homeassistant"
 mkdir -p "$HA_DIR"
 
 # Copy docker-compose.yml if present in project
-if [[ -f "docker-compose.yml" ]]; then
-    cp docker-compose.yml "$HA_DIR/"
-    echo "✅ docker-compose.yml copied to $HA_DIR"
+if [[ -f "${SCRIPT_DIR}/../docker/docker-compose.yml" ]]; then
+    cp "${SCRIPT_DIR}/../docker/docker-compose.yml" "$HA_DIR/"
+    echo "✅ docker-compose.yml copied from project to $HA_DIR"
 else
     # Create base docker-compose.yml
     cat > "$HA_DIR/docker-compose.yml" << 'EOF'
@@ -128,7 +134,7 @@ fi
 # Create required directories
 echo "📁 Creating directories..."
 mkdir -p /etc/ha-watchdog
-mkdir -p /var/lib/ha-responder
+mkdir -p /var/lib/ha-failure-notifier
 mkdir -p /usr/local/bin
 mkdir -p "$HA_DIR/homeassistant"
 mkdir -p "$HA_DIR/nodered"
@@ -137,6 +143,90 @@ mkdir -p "$HA_DIR/nodered"
 echo "📦 Installing dependencies..."
 apt update
 apt install -y bc curl jq wireless-tools dos2unix htop
+
+# Install SSH server (if not already installed)
+echo "🔐 Ensuring SSH server is installed..."
+if ! systemctl is-active --quiet ssh; then
+    apt install -y openssh-server
+    systemctl enable ssh
+    systemctl start ssh
+    echo "✅ SSH server installed and started"
+else
+    echo "✅ SSH server already running"
+fi
+
+# Configure SSH keys for security
+echo "🔑 Configuring SSH security..."
+SSH_CONFIG="/etc/ssh/sshd_config"
+
+# Backup original config
+if [[ ! -f "${SSH_CONFIG}.backup" ]]; then
+    cp "$SSH_CONFIG" "${SSH_CONFIG}.backup"
+    echo "💾 SSH config backup created"
+fi
+
+# Configure SSH for key-based authentication
+cat > /tmp/ssh_security.conf << 'EOF'
+# Security hardening for SSH
+PasswordAuthentication yes
+PubkeyAuthentication yes
+PermitRootLogin no
+MaxAuthTries 3
+ClientAliveInterval 300
+ClientAliveCountMax 2
+Protocol 2
+X11Forwarding no
+AllowUsers pi
+EOF
+
+# Append security settings if not already present
+if ! grep -q "# Security hardening for SSH" "$SSH_CONFIG"; then
+    echo "" >> "$SSH_CONFIG"
+    cat /tmp/ssh_security.conf >> "$SSH_CONFIG"
+    echo "✅ SSH security configuration applied"
+    
+    # Restart SSH to apply changes
+    systemctl restart ssh
+    echo "🔄 SSH service restarted"
+else
+    echo "✅ SSH security already configured"
+fi
+
+# Setup SSH keys directory for user
+USER_HOME="/home/${SUDO_USER:-pi}"
+if [[ -d "$USER_HOME" ]]; then
+    SSH_DIR="$USER_HOME/.ssh"
+    mkdir -p "$SSH_DIR"
+    chmod 700 "$SSH_DIR"
+    chown ${SUDO_USER:-pi}:${SUDO_USER:-pi} "$SSH_DIR"
+    
+    # Create authorized_keys if it doesn't exist
+    AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
+    if [[ ! -f "$AUTHORIZED_KEYS" ]]; then
+        touch "$AUTHORIZED_KEYS"
+        chmod 600 "$AUTHORIZED_KEYS"
+        chown ${SUDO_USER:-pi}:${SUDO_USER:-pi} "$AUTHORIZED_KEYS"
+        
+        # Add the project SSH public key
+        echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHNKOdVcE9EhXsjGimG00N86zo+ocaIzCx+0/KFTMiZU neoselcev@LenovoP14sgen2-Slava" >> "$AUTHORIZED_KEYS"
+        
+        echo "🔑 SSH keys directory configured at $SSH_DIR"
+        echo "✅ Project SSH public key added to $AUTHORIZED_KEYS"
+        echo "📝 SSH access via: ssh pi@rpi3-hostname or ssh rpi-vpn (if configured)"
+    else
+        echo "✅ SSH keys already configured"
+        
+        # Check if project key is already present
+        if ! grep -q "AAAAC3NzaC1lZDI1NTE5AAAAIHNKOdVcE9EhXsjGimG00N86zo+ocaIzCx+0/KFTMiZU" "$AUTHORIZED_KEYS"; then
+            echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHNKOdVcE9EhXsjGimG00N86zo+ocaIzCx+0/KFTMiZU neoselcev@LenovoP14sgen2-Slava" >> "$AUTHORIZED_KEYS"
+            echo "✅ Project SSH public key added to existing authorized_keys"
+        else
+            echo "✅ Project SSH key already present in authorized_keys"
+        fi
+    fi
+fi
+
+rm -f /tmp/ssh_security.conf
 
 # Install security components
 echo "🛡️ Installing security components..."
@@ -180,6 +270,10 @@ systemctl enable fail2ban
 systemctl restart fail2ban
 echo "✅ Fail2ban configured and active"
 
+# Configure auditd for SSH monitoring (optional)
+if command -v auditctl >/dev/null 2>&1; then
+    echo "🔍 Configuring audit rules for SSH monitoring..."
+    cat >> /etc/audit/rules.d/audit.rules << 'EOF'
 # Audit/watch SSH
 -w /var/log/auth.log -p wa -k auth
 -w /etc/ssh/sshd_config -p wa -k ssh
@@ -191,24 +285,52 @@ echo "✅ Fail2ban configured and active"
 # Audit/watch firewall
 -w /etc/ufw -p wa -k firewall
 EOF
+    echo "✅ Audit rules configured"
+else
+    echo "⚠️ auditd not installed, skipping audit rules"
+fi
 
 echo "📋 Configuring Logrotate for security system..."
-# Copy logrotate configs
-cp "${SCRIPT_DIR}/logrotate/fail2ban" /etc/logrotate.d/
-cp "${SCRIPT_DIR}/logrotate/ufw" /etc/logrotate.d/
-echo "✅ Logrotate set for fail2ban and ufw"
+# Copy logrotate configs from project structure
+if [[ -f "${SCRIPT_DIR}/logrotate/fail2ban" ]]; then
+    cp "${SCRIPT_DIR}/logrotate/fail2ban" /etc/logrotate.d/
+    echo "✅ Fail2ban logrotate configured"
+fi
+if [[ -f "${SCRIPT_DIR}/logrotate/ufw" ]]; then
+    cp "${SCRIPT_DIR}/logrotate/ufw" /etc/logrotate.d/
+    echo "✅ UFW logrotate configured"
+fi
 
 # Copy scripts (updated architecture with centralized logging)
-echo "📋 Installing scripts..."
+echo "📋 Installing monitoring and system scripts..."
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 
-# Monitoring (with new logging architecture)
+# Monitoring services
 cp "${SCRIPT_DIR}/monitoring/ha-watchdog/ha-watchdog.sh" /usr/local/bin/ha-watchdog.sh
 cp "${SCRIPT_DIR}/monitoring/ha-failure-notifier/ha-failure-notifier.sh" /usr/local/bin/ha-failure-notifier.sh
 
 # System services (integrated with logging-service)
 cp "${SCRIPT_DIR}/system/nightly-reboot/nightly-reboot.sh" /usr/local/bin/nightly-reboot.sh
 cp "${SCRIPT_DIR}/system/update-checker/update-checker.sh" /usr/local/bin/update-checker.sh
+
+# Backup system (CRITICAL COMPONENT)
+if [[ -d "${SCRIPT_DIR}/system/ha-backup" ]]; then
+    echo "💾 Installing backup system..."
+    cp "${SCRIPT_DIR}/system/ha-backup/ha-backup.sh" /usr/local/bin/ha-backup.sh
+    cp "${SCRIPT_DIR}/system/ha-backup/ha-restore.sh" /usr/local/bin/ha-restore.sh
+    
+    # Create backup directory
+    mkdir -p /opt/backups
+    chmod 755 /opt/backups
+    echo "✅ Backup system installed"
+fi
+
+# System diagnostic startup service
+if [[ -d "${SCRIPT_DIR}/system/system-diagnostic-startup" ]]; then
+    echo "🔄 Installing startup diagnostics..."
+    cp "${SCRIPT_DIR}/system/system-diagnostic-startup/system-diagnostic-startup.sh" /usr/local/bin/system-diagnostic-startup.sh
+    echo "✅ Startup diagnostics installed"
+fi
 
 # Communication (centralized Telegram)
 cp "${SCRIPT_DIR}/communication/telegram-sender/telegram-sender.sh" /usr/local/bin/telegram-sender.sh
@@ -219,6 +341,11 @@ cp "${SCRIPT_DIR}/system/logging-service/logging-service.sh" /usr/local/bin/logg
 # Diagnostics
 cp "${SCRIPT_DIR}/diagnostics/system-diagnostic.sh" /usr/local/bin/system-diagnostic.sh
 
+    # Create compatibility symbolic links for monitoring control
+    log "Creating monitoring control symbolic links..."
+    create_symlink "${SCRIPT_DIR}/monitoring/ha-watchdog/ha-watchdog.sh" "/usr/local/bin/ha-monitoring-services-control.sh"
+    create_symlink "${SCRIPT_DIR}/system/ha-backup.sh" "/usr/local/bin/ha-backup"
+
 # Set execute permissions
 chmod +x /usr/local/bin/ha-watchdog.sh
 chmod +x /usr/local/bin/ha-failure-notifier.sh
@@ -227,6 +354,19 @@ chmod +x /usr/local/bin/update-checker.sh
 chmod +x /usr/local/bin/telegram-sender.sh
 chmod +x /usr/local/bin/logging-service.sh
 chmod +x /usr/local/bin/system-diagnostic.sh
+
+# Set permissions for backup system (if installed)
+if [[ -f /usr/local/bin/ha-backup.sh ]]; then
+    chmod +x /usr/local/bin/ha-backup.sh
+    chmod +x /usr/local/bin/ha-restore.sh
+    echo "✅ Backup scripts permissions set"
+fi
+
+# Set permissions for startup diagnostics (if installed)
+if [[ -f /usr/local/bin/system-diagnostic-startup.sh ]]; then
+    chmod +x /usr/local/bin/system-diagnostic-startup.sh
+    echo "✅ Startup diagnostic script permissions set"
+fi
 
 echo "✅ Scripts installed with new centralized logging architecture"
 
@@ -260,6 +400,22 @@ touch /var/log/ha-failure-notifier.log
 touch /var/log/nightly-reboot.log
 touch /var/log/update-checker.log
 
+# Create backup system logs (if backup system installed)
+if [[ -f /usr/local/bin/ha-backup.sh ]]; then
+    touch /var/log/ha-backup.log
+    chmod 644 /var/log/ha-backup.log
+    echo "✅ Backup system logs created"
+fi
+
+# Create startup diagnostic logs (if installed)
+if [[ -f /usr/local/bin/system-diagnostic-startup.sh ]]; then
+    touch /var/log/system-diagnostic-startup.log
+    chmod 644 /var/log/system-diagnostic-startup.log
+    echo "✅ Startup diagnostic logs created"
+fi
+
+# System diagnostic logs will be created automatically
+
 chmod 644 /var/log/telegram-sender.log
 chmod 644 /var/log/logging-service.log
 chmod 644 /var/log/ha-watchdog.log
@@ -270,9 +426,26 @@ chmod 644 /var/log/update-checker.log
 
 # Logrotate for new services
 echo "🔄 Configuring logrotate for centralized architecture..."
-cp "${SCRIPT_DIR}/communication/telegram-sender/telegram-sender.logrotate" /etc/logrotate.d/telegram-sender
-cp "${SCRIPT_DIR}/system/logging-service/logging-service.logrotate" /etc/logrotate.d/logging-service
-cp "${SCRIPT_DIR}/system/ha-general-logs.logrotate" /etc/logrotate.d/ha-general-logs
+if [[ -f "${SCRIPT_DIR}/communication/telegram-sender/telegram-sender.logrotate" ]]; then
+    cp "${SCRIPT_DIR}/communication/telegram-sender/telegram-sender.logrotate" /etc/logrotate.d/telegram-sender
+    echo "✅ Telegram sender logrotate configured"
+fi
+
+if [[ -f "${SCRIPT_DIR}/system/logging-service/logging-service.logrotate" ]]; then
+    cp "${SCRIPT_DIR}/system/logging-service/logging-service.logrotate" /etc/logrotate.d/logging-service
+    echo "✅ Logging service logrotate configured"
+fi
+
+if [[ -f "${SCRIPT_DIR}/system/ha-general-logs.logrotate" ]]; then
+    cp "${SCRIPT_DIR}/system/ha-general-logs.logrotate" /etc/logrotate.d/ha-general-logs
+    echo "✅ HA general logs logrotate configured"
+fi
+
+# Additional logrotate for backup system (if available)
+if [[ -f "${SCRIPT_DIR}/system/ha-backup/ha-backup.logrotate" ]]; then
+    cp "${SCRIPT_DIR}/system/ha-backup/ha-backup.logrotate" /etc/logrotate.d/ha-backup
+    echo "✅ Backup system logrotate configured"
+fi
 
 echo "✅ Centralized services configured"
 
@@ -300,16 +473,40 @@ echo "✅ Home Assistant containers started"
 echo "🔧 Creating systemd services..."
 
 # Copy systemd files for monitoring services
-cp monitoring/ha-watchdog/ha-watchdog.service /etc/systemd/system/
-cp monitoring/ha-watchdog/ha-watchdog.timer /etc/systemd/system/
-cp monitoring/ha-failure-notifier/ha-failure-notifier.service /etc/systemd/system/
-cp monitoring/ha-failure-notifier/ha-failure-notifier.timer /etc/systemd/system/
+cp "${SCRIPT_DIR}/monitoring/ha-watchdog/ha-watchdog.service" /etc/systemd/system/
+cp "${SCRIPT_DIR}/monitoring/ha-watchdog/ha-watchdog.timer" /etc/systemd/system/
+cp "${SCRIPT_DIR}/monitoring/ha-failure-notifier/ha-failure-notifier.service" /etc/systemd/system/
+cp "${SCRIPT_DIR}/monitoring/ha-failure-notifier/ha-failure-notifier.timer" /etc/systemd/system/
 
 # Copy systemd files for system services
 cp "${SCRIPT_DIR}/system/nightly-reboot/nightly-reboot.service" /etc/systemd/system/
 cp "${SCRIPT_DIR}/system/nightly-reboot/nightly-reboot.timer" /etc/systemd/system/
 cp "${SCRIPT_DIR}/system/update-checker/update-checker.service" /etc/systemd/system/
 cp "${SCRIPT_DIR}/system/update-checker/update-checker.timer" /etc/systemd/system/
+
+# Copy centralized logging service (CORE COMPONENT)
+if [[ -f "${SCRIPT_DIR}/system/logging-service/logging-service.service" ]]; then
+    cp "${SCRIPT_DIR}/system/logging-service/logging-service.service" /etc/systemd/system/
+    echo "✅ Centralized logging service installed"
+fi
+
+# Copy backup system services (if available)
+if [[ -d "${SCRIPT_DIR}/system/ha-backup" ]]; then
+    if [[ -f "${SCRIPT_DIR}/system/ha-backup/ha-backup.service" ]]; then
+        cp "${SCRIPT_DIR}/system/ha-backup/ha-backup.service" /etc/systemd/system/
+        cp "${SCRIPT_DIR}/system/ha-backup/ha-backup.timer" /etc/systemd/system/
+        echo "✅ Backup system services installed"
+    fi
+fi
+
+# Copy startup diagnostic services (if available)
+if [[ -d "${SCRIPT_DIR}/system/system-diagnostic-startup" ]]; then
+    if [[ -f "${SCRIPT_DIR}/system/system-diagnostic-startup/system-diagnostic-startup.service" ]]; then
+        cp "${SCRIPT_DIR}/system/system-diagnostic-startup/system-diagnostic-startup.service" /etc/systemd/system/
+        cp "${SCRIPT_DIR}/system/system-diagnostic-startup/system-diagnostic-startup.timer" /etc/systemd/system/
+        echo "✅ Startup diagnostic services installed"
+    fi
+fi
 
 # Extended logrotate setup
 echo "📝 Setting up extended logrotate..."
@@ -370,6 +567,24 @@ systemctl daemon-reload
 systemctl enable ha-watchdog.timer
 systemctl enable ha-failure-notifier.timer
 systemctl enable nightly-reboot.timer
+
+# Enable centralized logging service (CORE COMPONENT)
+if [[ -f /etc/systemd/system/logging-service.service ]]; then
+    systemctl enable logging-service.service
+    echo "✅ Centralized logging service enabled"
+fi
+
+# Enable backup system (if installed)
+if [[ -f /etc/systemd/system/ha-backup.timer ]]; then
+    systemctl enable ha-backup.timer
+    echo "✅ Backup system timer enabled"
+fi
+
+# Enable startup diagnostics (if installed)
+if [[ -f /etc/systemd/system/system-diagnostic-startup.timer ]]; then
+    systemctl enable system-diagnostic-startup.timer
+    echo "✅ Startup diagnostics timer enabled"
+fi
 
 read -p "Install daily update check? (y/n): " -n 1 -r
 echo
@@ -433,12 +648,25 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     systemctl stop tailscaled tailscale-serve-ha tailscale-funnel-ha 2>/dev/null || true
     
     # Copy configuration and services
-    cp tailscale/tailscaled/tailscaled.service /etc/systemd/system/
-    cp tailscale/tailscale-serve-ha/tailscale-serve-ha.service /etc/systemd/system/
-    cp tailscale/tailscale-funnel-ha/tailscale-funnel-ha.service /etc/systemd/system/
+    if [[ -f "${SCRIPT_DIR}/tailscale/tailscaled/tailscaled.service" ]]; then
+        cp "${SCRIPT_DIR}/tailscale/tailscaled/tailscaled.service" /etc/systemd/system/
+    fi
+    if [[ -f "${SCRIPT_DIR}/tailscale/tailscale-serve-ha/tailscale-serve-ha.service" ]]; then
+        cp "${SCRIPT_DIR}/tailscale/tailscale-serve-ha/tailscale-serve-ha.service" /etc/systemd/system/
+    fi
+    if [[ -f "${SCRIPT_DIR}/tailscale/tailscale-funnel-ha/tailscale-funnel-ha.service" ]]; then
+        cp "${SCRIPT_DIR}/tailscale/tailscale-funnel-ha/tailscale-funnel-ha.service" /etc/systemd/system/
+    fi
     
-    if [[ -f tailscale/tailscaled/tailscaled.default ]]; then
-        cp tailscale/tailscaled/tailscaled.default /etc/default/tailscaled
+    if [[ -f "${SCRIPT_DIR}/tailscale/tailscaled/tailscaled.default" ]]; then
+        cp "${SCRIPT_DIR}/tailscale/tailscaled/tailscaled.default" /etc/default/tailscaled
+    fi
+    
+    # Install Tailscale management scripts
+    if [[ -f "${SCRIPT_DIR}/tailscale/scripts/remote-delete-machines" ]]; then
+        cp "${SCRIPT_DIR}/tailscale/scripts/remote-delete-machines" /usr/local/bin/
+        chmod +x /usr/local/bin/remote-delete-machines
+        echo "✅ Tailscale management scripts installed"
     fi
     
     # Activate services
@@ -458,26 +686,33 @@ case "$1" in
         systemctl start ha-watchdog.timer
         systemctl start ha-failure-notifier.timer
         systemctl start nightly-reboot.timer
+        [[ -f /etc/systemd/system/logging-service.service ]] && systemctl start logging-service.service
         [[ -f /etc/systemd/system/update-checker.timer ]] && systemctl start update-checker.timer
+        [[ -f /etc/systemd/system/ha-backup.timer ]] && systemctl start ha-backup.timer
+        [[ -f /etc/systemd/system/system-diagnostic-startup.timer ]] && systemctl start system-diagnostic-startup.timer
         [[ -f /etc/systemd/system/tailscaled.service ]] && systemctl start tailscaled
         [[ -f /etc/systemd/system/tailscale-serve-ha.service ]] && systemctl start tailscale-serve-ha
         [[ -f /etc/systemd/system/tailscale-funnel-ha.service ]] && systemctl start tailscale-funnel-ha
-    echo "✅ All services started"
+        echo "✅ All services started"
         ;;
     stop)
         systemctl stop ha-watchdog.timer
         systemctl stop ha-failure-notifier.timer
         systemctl stop nightly-reboot.timer
+        [[ -f /etc/systemd/system/logging-service.service ]] && systemctl stop logging-service.service
         [[ -f /etc/systemd/system/update-checker.timer ]] && systemctl stop update-checker.timer
+        [[ -f /etc/systemd/system/ha-backup.timer ]] && systemctl stop ha-backup.timer
+        [[ -f /etc/systemd/system/system-diagnostic-startup.timer ]] && systemctl stop system-diagnostic-startup.timer
         [[ -f /etc/systemd/system/tailscaled.service ]] && systemctl stop tailscaled
         [[ -f /etc/systemd/system/tailscale-serve-ha.service ]] && systemctl stop tailscale-serve-ha
         [[ -f /etc/systemd/system/tailscale-funnel-ha.service ]] && systemctl stop tailscale-funnel-ha
-    echo "⏹️ All services stopped"
+        echo "⏹️ All services stopped"
         ;;
     restart)
         systemctl restart ha-watchdog.timer
         systemctl restart ha-failure-notifier.timer
         systemctl restart nightly-reboot.timer
+        [[ -f /etc/systemd/system/logging-service.service ]] && systemctl restart logging-service.service
         [[ -f /etc/systemd/system/update-checker.timer ]] && systemctl restart update-checker.timer
         [[ -f /etc/systemd/system/tailscaled.service ]] && systemctl restart tailscaled
         [[ -f /etc/systemd/system/tailscale-serve-ha.service ]] && systemctl restart tailscale-serve-ha
@@ -491,6 +726,7 @@ case "$1" in
         systemctl status ha-failure-notifier.timer --no-pager -l
     echo "--- System ---"
         systemctl status nightly-reboot.timer --no-pager -l
+        [[ -f /etc/systemd/system/logging-service.service ]] && systemctl status logging-service.service --no-pager -l
         [[ -f /etc/systemd/system/update-checker.timer ]] && systemctl status update-checker.timer --no-pager -l
     echo "--- Tailscale ---"
         [[ -f /etc/systemd/system/tailscaled.service ]] && systemctl status tailscaled --no-pager -l
@@ -601,10 +837,19 @@ EOF
 
 chmod +x /usr/local/bin/ha-monitoring-control
 
+# Create compatibility link for documentation consistency
+ln -sf /usr/local/bin/ha-monitoring-control /usr/local/bin/ha-monitoring-services-control.sh 2>/dev/null || true
+echo "✅ Monitoring control script compatibility link created"
+
 # Install diagnostic script
 echo "🔍 Installing diagnostic script..."
-cp system-diagnostic.sh /usr/local/bin/system-diagnostic.sh
-chmod +x /usr/local/bin/system-diagnostic.sh
+# Note: script already copied above, just ensuring it's in place
+if [[ ! -f /usr/local/bin/system-diagnostic.sh ]]; then
+    echo "⚠️ Diagnostic script not found, copying again..."
+    cp "${SCRIPT_DIR}/diagnostics/system-diagnostic.sh" /usr/local/bin/system-diagnostic.sh
+    chmod +x /usr/local/bin/system-diagnostic.sh
+fi
+echo "✅ System diagnostic script ready"
 
 echo ""
 echo "✅ Installation completed!"
@@ -615,11 +860,13 @@ echo "   ├─ Home Assistant: Running on port 8123"
 echo "   └─ Node-RED: Running on port 1880"
 echo ""
 echo "📝 Next steps:"
-echo "1. Edit /etc/ha-watchdog/config"
-echo "2. Add Telegram bot tokens"
-echo "3. Start monitoring: ha-monitoring-control start"
-echo "4. Check status: ha-monitoring-control status"
-echo "5. Test Telegram: ha-monitoring-control test-telegram"
+echo "1. Edit /etc/telegram-sender/config (Telegram bot settings)"
+echo "2. Edit /etc/ha-watchdog/config (monitoring thresholds)"
+echo "3. SSH access configured with project key (ssh pi@rpi3-hostname)"
+echo "4. Start monitoring: ha-monitoring-control start"
+echo "5. Check status: ha-monitoring-control status"
+echo "6. Test Telegram: ha-monitoring-control test-telegram"
+echo "7. Test SSH: ssh rpi-vpn sysdiag"
 echo ""
 echo "🔧 Management commands:"
 echo "   ha-monitoring-control {start|stop|restart|status|logs|test-telegram|tailscale-status|diagnostic}"
@@ -631,38 +878,30 @@ echo "   cd /opt/homeassistant && docker-compose logs   - containers logs"
 echo "   cd /opt/homeassistant && docker-compose restart - restart containers"
 echo ""
 echo "🔍 System diagnostics:"
-echo "   system-diagnostic.sh        - full system diagnostics"
-echo "   health-check                 - alias for system-diagnostic.sh"
+echo "   system-diagnostic.sh        - full system diagnostics (79 checks)"
+echo "   sysdiag, diag, diagnostic   - aliases for system-diagnostic.sh"
 echo ""
 
-# Add diagnostic aliases for the user
-echo "🔧 Setting diagnostic aliases..."
-USER_HOME="/home/${SUDO_USER:-pi}"
-if [[ -d "$USER_HOME" ]]; then
-    cat >> "$USER_HOME/.bashrc" << 'EOF'
-
-# Diagnostic aliases for HA monitoring
-alias diag-full="system-diagnostic.sh"
-alias diag-telegram="system-diagnostic.sh 2>/dev/null | grep -A 25 \"Telegram Sender Service\""
-alias diag-monitoring="system-diagnostic.sh 2>/dev/null | grep -A 50 \"MONITORING SYSTEM\""
-alias diag-summary="system-diagnostic.sh 2>/dev/null | grep -E \"(OK|WARNING|ERROR)\" | tail -20"
-EOF
-    chown ${SUDO_USER:-pi}:${SUDO_USER:-pi} "$USER_HOME/.bashrc"
-    echo "✅ Diagnostic aliases added"
-else
-    echo "⚠️  User home directory not found, aliases not added"
-fi
+# Diagnostic aliases already configured above during initial setup
+echo "✅ Diagnostic aliases configured (sysdiag, diag, diagnostic, syscheck, fullcheck)"
+echo "✅ Monitoring control links created:"
+echo "   /usr/local/bin/ha-monitoring-services-control.sh → ha-monitoring-control"
 
 echo ""
-echo "💡 Quick diagnostic commands:"
-echo "   health-check     - full system diagnostics (79 checks)"
-echo "   health-quick     - quick core components check"  
-echo "   health-monitor   - real-time monitoring"
-echo "   diagnostic       - alternative diagnostics via ha-monitoring-control"
+echo "💡 Quick diagnostic commands (as per README.md):"
+echo "   sysdiag/diag     - full system diagnostics (79 checks)"
+echo "   syscheck         - quick core components check"  
+echo "   fullcheck        - full diagnostic with detailed output"
+echo "   ha-status        - service status overview"
+echo "   ha-logs          - recent logs overview"
+echo "   ha-start         - start all monitoring services"
+echo "   ha-stop          - stop all monitoring services"
+echo "   ha-restart       - restart all monitoring services"
 echo ""
 echo "📍 Log files:"
-echo "   /var/log/ha-watchdog.log     - checks log"
-echo "   /var/log/ha-responder.log    - actions log" 
-echo "   /var/log/ha-failures.log     - failures log"
-echo "   /var/log/telegram-sender.log - Telegram send log"
+echo "   /var/log/ha-watchdog.log         - monitoring checks"
+echo "   /var/log/ha-failure-notifier.log - failure processing" 
+echo "   /var/log/ha-failures.log         - detected failures"
+echo "   /var/log/telegram-sender.log     - Telegram delivery"
+echo "   /var/log/ha-backup.log           - backup operations (if installed)"
 echo ""
