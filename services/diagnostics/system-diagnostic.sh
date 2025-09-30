@@ -58,8 +58,8 @@ check_basic_system() {
     log_check "INFO" "CPU: $cpu_model"
     
     # Temperature
-    if [[ -f /sys/class/thermal/thermal_zone0/temp ]]; then
-        local temp=$(cat /sys/class/thermal/thermal_zone0/temp | awk '{print $1/1000}')
+    if [[ -f /sys/class/thermal/thermal_zone2/temp ]]; then
+        local temp=$(echo "scale=1; $(cat /sys/class/thermal/thermal_zone2/temp)/1000" | bc)
         if (( $(echo "$temp > 70" | bc -l) )); then
             log_check "WARNING" "Temperature: ${temp}°C (high!)"
         elif (( $(echo "$temp > 60" | bc -l) )); then
@@ -67,6 +67,8 @@ check_basic_system() {
         else
             log_check "OK" "Temperature: ${temp}°C"
         fi
+    else
+        log_check "WARNING" "Temperature: sensor not found"
     fi
     
     echo "" | tee -a "$REPORT_FILE"
@@ -886,13 +888,15 @@ check_security() {
             log_check "INFO" "Package list is outdated (>24h), checking anyway..."
         fi
         
-        local security_updates=$(apt list --upgradable 2>/dev/null | grep -c security || echo "0")
-        local total_updates=$(apt list --upgradable 2>/dev/null | wc -l)
+        local security_updates=$(apt list --upgradable 2>/dev/null | grep -c security | tr -d '\n' || echo "0")
+        local total_updates=$(apt list --upgradable 2>/dev/null | wc -l | tr -d '\n')
         
-        if [[ "$security_updates" -eq 0 ]]; then
+        if [[ "$security_updates" =~ ^[0-9]+$ ]] && [[ "$security_updates" -eq 0 ]]; then
             log_check "OK" "Security Updates: None pending"
-        else
+        elif [[ "$security_updates" =~ ^[0-9]+$ ]] && [[ "$security_updates" -gt 0 ]]; then
             log_check "WARNING" "Security Updates: $security_updates security updates pending"
+        else
+            log_check "WARNING" "Security Updates: Could not determine count"
         fi
         
         if [[ "$total_updates" -gt 0 ]]; then
