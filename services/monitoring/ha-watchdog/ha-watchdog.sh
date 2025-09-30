@@ -20,11 +20,11 @@ else
     HA_PORT=8123
     NODERED_PORT=1880
     SSH_PORT=22
-    CRITICAL_SERVICES=("docker" "home-stack" "tailscaled")
+    CRITICAL_SERVICES=("docker" "tailscaled")
     MAX_LOG_SIZE_MB=100
     HA_DB_PATH="/config/home-assistant_v2.db"
     HA_DB_MAX_SIZE_MB=1000
-    SWAP_THRESHOLD_MB=50
+    SWAP_THRESHOLD_MB=100
 fi
 
 GATEWAY=$(ip route | awk '/default/ {print $3}')
@@ -175,6 +175,20 @@ check_ssh_access() {
         return 1
     fi
     return 0
+}
+
+check_ssh_security() {
+    local failed=0
+    
+    # Check if fail2ban is protecting SSH (critical for security)
+    if command -v fail2ban-client >/dev/null 2>&1; then
+        if ! systemctl is-active fail2ban >/dev/null 2>&1; then
+            log_failure "FAIL2BAN_DOWN"
+            ((failed++))
+        fi
+    fi
+    
+    return $failed
 }
 
 check_tailscale_status() {
@@ -369,7 +383,7 @@ check_wifi_signal() {
 
 # Main comprehensive check
 main() {
-    log "Starting comprehensive system health check (19 components)" "INFO"
+    log "Starting comprehensive system health check (20 components)" "INFO"
     
     local total_failures=0
     
@@ -395,6 +409,7 @@ main() {
     # Remote access services
     log "Testing remote access..." "DEBUG"
     check_ssh_access || ((total_failures++))
+    check_ssh_security || ((total_failures++))
     check_tailscale_status || ((total_failures++))
     # check_public_access || ((total_failures++))  # Disabled: Tailscale Funnel not configured
     
@@ -412,7 +427,7 @@ main() {
     check_wifi_signal || ((total_failures++))
     
     if [[ $total_failures -eq 0 ]]; then
-        log "Health check completed: ALL 18 CHECKS PASSED ✓" "INFO"
+        log "Health check completed: ALL 19 CHECKS PASSED ✓" "INFO"
     else
         log "Health check completed: $total_failures failure(s) detected across system components" "WARN"
     fi

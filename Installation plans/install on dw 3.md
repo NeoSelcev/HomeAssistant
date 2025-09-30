@@ -180,6 +180,34 @@ Host ha-vpn
     IdentityFile C:\Users\neose\.ssh\id_ed25519
 ```
 
+### Secure SSH Configuration
+
+**Important Security Step**: Disable password authentication to allow only SSH key access.
+
+```bash
+# Disable password authentication for security
+sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+
+# Also ensure these security settings
+sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+sudo sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+
+# Reload SSH service to apply changes
+sudo systemctl reload ssh
+
+# Verify configuration
+grep -E "PasswordAuthentication|PubkeyAuthentication|PermitRootLogin" /etc/ssh/sshd_config
+```
+
+Expected output:
+```
+PasswordAuthentication no
+PubkeyAuthentication yes
+PermitRootLogin no
+```
+
+**⚠️ Warning**: After applying these changes, you will only be able to connect via SSH keys, not passwords. Make sure your SSH key is working before applying these changes!
+
 ## 12. Tailscale Installation
 
 ```bash
@@ -246,14 +274,80 @@ sudo ufw allow 1880/tcp
 sudo ufw --force enable
 ```
 
-### Configure Backup DNS Server
+### Configure Fail2ban for SSH Protection
 
 ```bash
-# Add Google DNS as backup (optional but recommended)
-echo 'nameserver 8.8.8.8' | sudo tee -a /etc/resolv.conf
+# Create Fail2ban configuration for SSH protection
+sudo tee /etc/fail2ban/jail.local > /dev/null << 'EOF'
+[DEFAULT]
+bantime = 10m
+findtime = 10m
+maxretry = 5
 
-# Verify DNS resolution
-ping -c 2 google.com
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+backend = systemd
+journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd
+maxretry = 3
+bantime = 1h
+EOF
+
+# Enable and start Fail2ban
+sudo systemctl enable fail2ban
+sudo systemctl start fail2ban
+
+# Verify Fail2ban status
+sudo fail2ban-client status
+sudo fail2ban-client status sshd
+```
+
+Expected output:
+```
+Status
+|- Number of jail:      1
+`- Jail list:   sshd
+
+Status for the jail: sshd
+|- Filter
+|  |- Currently failed: 0
+|  |- Total failed:     0
+|  `- Journal matches:  _SYSTEMD_UNIT=ssh.service + _COMM=sshd
+`- Actions
+   |- Currently banned: 0
+   |- Total banned:     0
+   `- Banned IP list:
+```
+
+### Configure DNS for Reliability
+
+```bash
+# Check current DNS configuration
+ssh ha "cat /etc/resolv.conf"
+
+# Add multiple backup DNS servers for redundancy
+ssh ha "echo 'nameserver 8.8.8.8' | sudo tee -a /etc/resolv.conf"
+ssh ha "echo 'nameserver 1.1.1.1' | sudo tee -a /etc/resolv.conf"
+
+# Verify final DNS configuration
+ssh ha "cat /etc/resolv.conf"
+```
+
+Expected output:
+```
+domain lan
+search lan
+nameserver 192.168.1.1    # Local router (primary)
+nameserver 8.8.8.8        # Google DNS (backup)
+nameserver 1.1.1.1        # Cloudflare DNS (backup)
+```
+
+```bash
+# Test DNS resolution with multiple methods
+ssh ha "getent hosts google.com"
+ssh ha "ping -c 2 google.com"
+ssh ha "ping -c 2 1.1.1.1"
 ```
 
 ## 14. Updates
@@ -339,6 +433,11 @@ ssh ha "sudo cp /tmp/homeassistant-setup/services/system/logging-service/logging
 ssh ha "sudo cp /tmp/homeassistant-setup/services/system/logging-service/logging-service.logrotate /etc/logrotate.d/logging-service"
 ssh ha "sudo cp /tmp/homeassistant-setup/services/logrotate/* /etc/logrotate.d/"
 ssh ha "sudo cp /tmp/homeassistant-setup/services/system/ha-general-logs.logrotate /etc/logrotate.d/ha-general-logs"
+
+# Fix log file permissions for Dell Wyse (x86_64 specific issue)
+# IMPORTANT: Centralized logging requires user:user ownership for all managed logs
+ssh ha "sudo touch /var/log/ha-system-diagnostic.log /var/log/ha-watchdog.log /var/log/ha-failure-notifier.log /var/log/ha-failures.log /var/log/ha-reboot.log"
+ssh ha "sudo chown user:user /var/log/ha-system-diagnostic.log /var/log/ha-watchdog.log /var/log/ha-failure-notifier.log /var/log/ha-failures.log /var/log/ha-reboot.log"
 
 # Optimize journald
 ssh ha "sudo mkdir -p /etc/systemd/journald.conf.d"
@@ -546,6 +645,51 @@ ssh ha "sudo logrotate -d /etc/logrotate.d/ha-general-logs"
 # Test all Telegram notifications
 ssh ha "/usr/local/bin/telegram-sender.sh 'Final system test - all services operational' 2"
 ```
+
+---
+
+## 🔧 Troubleshooting & System Health
+
+### Quick Diagnostic Commands
+
+```bash
+# Run comprehensive system diagnostic
+ssh ha "sysdiag --full"
+
+# Check all monitoring services
+ssh ha "systemctl list-timers | grep -E '(ha-|nightly|update|system-diagnostic)'"
+
+# Test Telegram notifications
+ssh ha "/usr/local/bin/telegram-sender.sh 'Test message' 2"
+
+# Check system resources
+ssh ha "df -h && free -h"
+
+# View recent logs
+ssh ha "journalctl -u ha-watchdog --since '1 hour ago'"
+```
+
+### Common Issues
+
+If you encounter issues during installation, most problems are prevented by following the installation steps exactly as written. The installation plan includes fixes for all known Dell Wyse 3040 specific issues:
+
+- **Centralized Logging**: Fixed in Step 17 (file permissions)
+- **SSH Security**: Configured in Step 11 (key-only authentication)  
+- **Fail2ban Setup**: Configured in Step 13 (systemd backend)
+- **DNS Configuration**: Configured in Step 13 (backup servers)
+- **Service Dependencies**: Cleaned up in monitoring scripts
+
+### System Health Monitoring
+
+The system includes comprehensive monitoring with automatic notifications:
+- **ha-watchdog**: Monitors critical services every 2 minutes
+- **system-diagnostic**: Daily health checks  
+- **failure-notifier**: Instant Telegram alerts for issues
+- **update-checker**: Weekly security update notifications
+
+For detailed troubleshooting of specific issues, refer to the relevant installation step where the component is configured.
+
+---
 
 
 HomeAssistant

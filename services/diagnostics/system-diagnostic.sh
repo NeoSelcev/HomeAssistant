@@ -177,7 +177,7 @@ check_network() {
     fi
     
     # DNS
-    if nslookup google.com >/dev/null 2>&1; then
+    if getent hosts google.com >/dev/null 2>&1; then
         log_check "OK" "DNS: Working"
     else
         log_check "WARNING" "DNS: Issues detected"
@@ -234,10 +234,10 @@ check_docker() {
     done
     
     # Docker compose
-    if [[ -f /srv/home/docker-compose.yml ]]; then
+    if [[ -f /opt/homeassistant/docker-compose.yml ]]; then
         log_check "OK" "Docker Compose: Configuration found"
         
-        cd /srv/home 2>/dev/null
+        cd /opt/homeassistant 2>/dev/null
         if docker compose ps >/dev/null 2>&1; then
             log_check "OK" "Docker Compose: Working"
         else
@@ -287,10 +287,10 @@ check_monitoring() {
         log_check "WARNING" "HA Watchdog: Not installed"
     fi
     
-    if [[ -f /usr/local/bin/ha-responder.sh ]]; then
-        log_check "OK" "HA Responder: Installed"
+    if [[ -f /usr/local/bin/ha-failure-notifier.sh ]]; then
+        log_check "OK" "HA Failure Notifier: Installed"
     else
-        log_check "WARNING" "HA Responder: Not installed"
+        log_check "WARNING" "HA Failure Notifier: Not installed"
     fi
     
     # Systemd timers
@@ -300,25 +300,17 @@ check_monitoring() {
         log_check "WARNING" "Watchdog Timer: Inactive"
     fi
     
-    if systemctl is-active ha-responder.timer >/dev/null 2>&1; then
-        log_check "OK" "Responder Timer: Active"
+    if systemctl is-active ha-failure-notifier.timer >/dev/null 2>&1; then
+        log_check "OK" "Failure Notifier Timer: Active"
     else
-        log_check "WARNING" "Responder Timer: Inactive"
+        log_check "WARNING" "Failure Notifier Timer: Inactive"
     fi
     
     # Configuration
-    if [[ -f /etc/ha-watchdog/config ]]; then
-        log_check "OK" "Configuration: Found"
-        
-        source /etc/ha-watchdog/config 2>/dev/null
-        
-        if [[ -n "$TELEGRAM_BOT_TOKEN" ]] && [[ -n "$TELEGRAM_CHAT_ID" ]]; then
-            log_check "OK" "Telegram: Configured"
-        else
-            log_check "WARNING" "Telegram: Not configured"
-        fi
+    if [[ -f /etc/ha-watchdog.conf ]]; then
+        log_check "OK" "Watchdog Configuration: Found"
     else
-        log_check "WARNING" "Configuration: Not found"
+        log_check "WARNING" "Watchdog Configuration: Not found"
     fi
     
     # Log files
@@ -372,9 +364,9 @@ check_monitoring() {
             log_check "WARNING" "Telegram Config: Insecure permissions ($perms, should be 600)"
         fi
         
-        # Check configuration content
-        if grep -q "TELEGRAM_BOT_TOKEN=" /etc/telegram-sender/config 2>/dev/null; then
-            if grep -q "your_bot_token_here" /etc/telegram-sender/config 2>/dev/null; then
+        # Check configuration content (using sudo as config has 600 permissions)
+        if sudo grep -q "TELEGRAM_BOT_TOKEN=" /etc/telegram-sender/config 2>/dev/null; then
+            if sudo grep -q "your_bot_token_here" /etc/telegram-sender/config 2>/dev/null; then
                 log_check "WARNING" "Telegram Config: Default token not changed"
             else
                 log_check "OK" "Telegram Config: Bot token configured"
@@ -383,8 +375,8 @@ check_monitoring() {
             log_check "ERROR" "Telegram Config: Bot token missing"
         fi
         
-        if grep -q "TELEGRAM_CHAT_ID=" /etc/telegram-sender/config 2>/dev/null; then
-            if grep -q "your_group_chat_id" /etc/telegram-sender/config 2>/dev/null; then
+        if sudo grep -q "TELEGRAM_CHAT_ID=" /etc/telegram-sender/config 2>/dev/null; then
+            if sudo grep -q "your_group_chat_id" /etc/telegram-sender/config 2>/dev/null; then
                 log_check "WARNING" "Telegram Config: Default chat ID not changed"
             else
                 log_check "OK" "Telegram Config: Chat ID configured"
@@ -396,7 +388,7 @@ check_monitoring() {
         # Check topic configuration
         local topics_found=0
         for topic in "TELEGRAM_TOPIC_SYSTEM" "TELEGRAM_TOPIC_ERRORS" "TELEGRAM_TOPIC_UPDATES" "TELEGRAM_TOPIC_RESTART"; do
-            if grep -q "$topic=" /etc/telegram-sender/config 2>/dev/null; then
+            if sudo grep -q "$topic=" /etc/telegram-sender/config 2>/dev/null; then
                 ((topics_found++))
             fi
         done
@@ -839,8 +831,8 @@ check_security() {
     fi
     
     # Firewall
-    if command -v ufw >/dev/null 2>&1; then
-        local ufw_status=$(ufw status | head -1)
+    if command -v ufw >/dev/null 2>&1 || [[ -x /usr/sbin/ufw ]]; then
+        local ufw_status=$(sudo /usr/sbin/ufw status 2>/dev/null | head -1)
         if echo "$ufw_status" | grep -q "active"; then
             log_check "OK" "Firewall (UFW): Active"
         else
@@ -855,19 +847,34 @@ check_security() {
         if systemctl is-active fail2ban >/dev/null 2>&1; then
             log_check "OK" "Fail2ban: Service active"
             
-            # Check jail status
-            local jail_count=$(fail2ban-client status 2>/dev/null | grep -c "Jail list:" || echo "0")
-            if [[ "$jail_count" -gt 0 ]]; then
-                local jails=$(fail2ban-client status 2>/dev/null | grep "Jail list:" | cut -d: -f2 | tr -d ' ' | tr ',' ' ')
-                log_check "INFO" "Fail2ban Jails: $jails"
-                
-                # Check banned IPs
-                local total_banned=0
-                for jail in $jails; do
-                    local banned=$(fail2ban-client status "$jail" 2>/dev/null | grep "Currently banned:" | awk '{print $NF}' || echo "0")
-                    total_banned=$((total_banned + banned))
-                done
-                log_check "INFO" "Currently Banned IPs: $total_banned"
+            # Check jail status safely
+            if command -v fail2ban-client >/dev/null 2>&1; then
+                local status_output=$(fail2ban-client status 2>/dev/null)
+                if [[ -n "$status_output" ]]; then
+                    local jail_line=$(echo "$status_output" | grep "Jail list:" || echo "")
+                    if [[ -n "$jail_line" ]]; then
+                        local jails=$(echo "$jail_line" | sed 's/.*Jail list:[[:space:]]*//' | tr ',' ' ')
+                        log_check "INFO" "Fail2ban Jails: $jails"
+                        
+                        # Check banned IPs safely
+                        local total_banned=0
+                        for jail in $jails; do
+                            if [[ -n "$jail" ]]; then
+                                local jail_status=$(fail2ban-client status "$jail" 2>/dev/null || echo "")
+                                if [[ -n "$jail_status" ]]; then
+                                    local banned_line=$(echo "$jail_status" | grep "Currently banned:" || echo "")
+                                    if [[ -n "$banned_line" ]]; then
+                                        local banned_count=$(echo "$banned_line" | awk '{print $NF}' | tr -d '[:space:]')
+                                        if [[ "$banned_count" =~ ^[0-9]+$ ]]; then
+                                            total_banned=$((total_banned + banned_count))
+                                        fi
+                                    fi
+                                fi
+                            fi
+                        done
+                        log_check "INFO" "Currently Banned IPs: $total_banned"
+                    fi
+                fi
             fi
         else
             log_check "WARNING" "Fail2ban: Service inactive"
@@ -905,12 +912,12 @@ check_security() {
     fi
     
     # File permissions
-    if [[ -f /etc/ha-watchdog/config ]]; then
-        local perms=$(stat -c %a /etc/ha-watchdog/config)
-        if [[ "$perms" == "600" ]] || [[ "$perms" == "640" ]]; then
-            log_check "OK" "Config File Permissions: Secure ($perms)"
+    if [[ -f /etc/ha-watchdog.conf ]]; then
+        local perms=$(stat -c %a /etc/ha-watchdog.conf)
+        if [[ "$perms" == "600" ]] || [[ "$perms" == "640" ]] || [[ "$perms" == "644" ]]; then
+            log_check "OK" "Watchdog Config Permissions: Secure ($perms)"
         else
-            log_check "WARNING" "Config File Permissions: Insecure ($perms)"
+            log_check "WARNING" "Watchdog Config Permissions: Insecure ($perms)"
         fi
     fi
     
@@ -1000,7 +1007,7 @@ check_performance() {
     # Disk I/O test
     log_check "INFO" "--- Disk Performance ---"
     if command -v dd >/dev/null 2>&1; then
-        local write_test=$(dd if=/dev/zero of=/tmp/test_write bs=1M count=10 oflag=sync 2>&1 | grep -o '[0-9.]\+ [MG]B/s' | head -1)
+        local write_test=$(dd if=/dev/zero of=/tmp/test_write bs=1M count=10 oflag=sync 2>&1 | grep -o '[0-9.]\+ [KMGT]B/s' | head -1)
         rm -f /tmp/test_write
         if [[ -n "$write_test" ]]; then
             log_check "OK" "Disk Write Speed: $write_test"
@@ -1008,7 +1015,10 @@ check_performance() {
             log_check "WARNING" "Disk Write Speed: Could not measure"
         fi
         
-        local read_test=$(dd if=/dev/zero of=/tmp/test_read bs=1M count=10 iflag=direct 2>&1 | grep -o '[0-9.]\+ [MG]B/s' | head -1)
+        # Create test file for reading
+        dd if=/dev/zero of=/tmp/test_read bs=1M count=10 >/dev/null 2>&1
+        local read_output=$(dd if=/tmp/test_read of=/dev/null bs=1M 2>&1)
+        local read_test=$(echo "$read_output" | grep -o '[0-9.]\+ [KMGT]B/s' | head -1)
         rm -f /tmp/test_read
         if [[ -n "$read_test" ]]; then
             log_check "OK" "Disk Read Speed: $read_test"
@@ -1050,12 +1060,13 @@ generate_summary() {
     log_check "INFO" "Errors: $error_checks"
     log_check "INFO" "Info: $info_checks"
     
-    # Calculate percentage
+    # Calculate percentage based only on actionable checks (OK + WARNING + ERROR)
+    local actionable_checks=$((ok_checks + warning_checks + error_checks))
     local pass_percent=0
-    if [[ "$total_checks" -gt 0 ]]; then
-        pass_percent=$(( (ok_checks * 100) / total_checks ))
+    if [[ "$actionable_checks" -gt 0 ]]; then
+        pass_percent=$(( (ok_checks * 100) / actionable_checks ))
     fi
-    log_check "INFO" "Success Rate: ${pass_percent}%"
+    log_check "INFO" "Success Rate: ${pass_percent}% (${ok_checks}/${actionable_checks} actionable checks)"
     
     echo "" | tee -a "$REPORT_FILE"
     
