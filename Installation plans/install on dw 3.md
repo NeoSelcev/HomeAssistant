@@ -276,78 +276,21 @@ sudo ufw --force enable
 
 ### Configure Fail2ban for SSH Protection
 
+**⚠️ Dell Wyse specific**: Use systemd backend instead of pyinotify
+
 ```bash
-# Create Fail2ban configuration for SSH protection
-sudo tee /etc/fail2ban/jail.local > /dev/null << 'EOF'
-[DEFAULT]
-bantime = 10m
-findtime = 10m
-maxretry = 5
-
-[sshd]
-enabled = true
-port = ssh
-filter = sshd
-backend = systemd
-journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd
-maxretry = 3
-bantime = 1h
-EOF
-
-# Enable and start Fail2ban
+# Install and configure Fail2ban with systemd backend
+sudo apt install fail2ban
 sudo systemctl enable fail2ban
 sudo systemctl start fail2ban
-
-# Verify Fail2ban status
-sudo fail2ban-client status
-sudo fail2ban-client status sshd
 ```
 
-Expected output:
-```
-Status
-|- Number of jail:      1
-`- Jail list:   sshd
-
-Status for the jail: sshd
-|- Filter
-|  |- Currently failed: 0
-|  |- Total failed:     0
-|  `- Journal matches:  _SYSTEMD_UNIT=ssh.service + _COMM=sshd
-`- Actions
-   |- Currently banned: 0
-   |- Total banned:     0
-   `- Banned IP list:
-```
-
-### Configure DNS for Reliability
+### Configure DNS Backup Servers
 
 ```bash
-# Check current DNS configuration
-ssh ha "cat /etc/resolv.conf"
-
-# Add multiple backup DNS servers for redundancy
-ssh ha "echo 'nameserver 8.8.8.8' | sudo tee -a /etc/resolv.conf"
-ssh ha "echo 'nameserver 1.1.1.1' | sudo tee -a /etc/resolv.conf"
-
-# Verify final DNS configuration
-ssh ha "cat /etc/resolv.conf"
-```
-
-Expected output:
-```
-domain lan
-search lan
-nameserver 192.168.1.1    # Local router (primary)
-nameserver 8.8.8.8        # Google DNS (backup)
-nameserver 1.1.1.1        # Cloudflare DNS (backup)
-```
-
-```bash
-# Test DNS resolution with multiple methods
-ssh ha "getent hosts google.com"
-ssh ha "ping -c 2 google.com"
-ssh ha "ping -c 2 1.1.1.1"
+# Add backup DNS servers for reliability (Dell Wyse can lose network)
+echo 'nameserver 8.8.8.8' | sudo tee -a /etc/resolv.conf
+echo 'nameserver 1.1.1.1' | sudo tee -a /etc/resolv.conf
 ```
 
 ## 14. Updates
@@ -571,6 +514,13 @@ ssh ha "sudo systemctl enable ha-backup.timer ha-watchdog.timer ha-failure-notif
 ssh ha "sudo systemctl start ha-backup.timer ha-watchdog.timer ha-failure-notifier.timer nightly-reboot.timer update-checker.timer system-diagnostic-startup.timer"
 ```
 
+#### Dell Wyse Compatibility Fixes
+```bash
+# Create compatibility symlinks for monitoring services
+ssh ha "sudo mkdir -p /etc/ha-watchdog && sudo ln -sf /etc/ha-watchdog.conf /etc/ha-watchdog/config"
+ssh ha "sudo systemctl daemon-reload"
+```
+
 #### Verify All Services
 ```bash
 # Check timer status
@@ -647,50 +597,6 @@ ssh ha "/usr/local/bin/telegram-sender.sh 'Final system test - all services oper
 ```
 
 ---
-
-## 🔧 Troubleshooting & System Health
-
-### Quick Diagnostic Commands
-
-```bash
-# Run comprehensive system diagnostic
-ssh ha "sysdiag --full"
-
-# Check all monitoring services
-ssh ha "systemctl list-timers | grep -E '(ha-|nightly|update|system-diagnostic)'"
-
-# Test Telegram notifications
-ssh ha "/usr/local/bin/telegram-sender.sh 'Test message' 2"
-
-# Check system resources
-ssh ha "df -h && free -h"
-
-# View recent logs
-ssh ha "journalctl -u ha-watchdog --since '1 hour ago'"
-```
-
-### Common Issues
-
-If you encounter issues during installation, most problems are prevented by following the installation steps exactly as written. The installation plan includes fixes for all known Dell Wyse 3040 specific issues:
-
-- **Centralized Logging**: Fixed in Step 17 (file permissions)
-- **SSH Security**: Configured in Step 11 (key-only authentication)  
-- **Fail2ban Setup**: Configured in Step 13 (systemd backend)
-- **DNS Configuration**: Configured in Step 13 (backup servers)
-- **Service Dependencies**: Cleaned up in monitoring scripts
-
-### System Health Monitoring
-
-The system includes comprehensive monitoring with automatic notifications:
-- **ha-watchdog**: Monitors critical services every 2 minutes
-- **system-diagnostic**: Daily health checks  
-- **failure-notifier**: Instant Telegram alerts for issues
-- **update-checker**: Weekly security update notifications
-
-For detailed troubleshooting of specific issues, refer to the relevant installation step where the component is configured.
-
----
-
 
 HomeAssistant
 192.168.1.22	

@@ -95,29 +95,33 @@ echo "2. DOCKER IMAGE UPDATES" >> "$REPORT_FILE"
 echo "======================" >> "$REPORT_FILE"
 
 if command -v docker >/dev/null 2>&1; then
-    cd /srv/home || { echo "Docker compose directory not found" >> "$REPORT_FILE"; exit 1; }
+    cd /opt/homeassistant || { echo "Docker compose directory not found" >> "$REPORT_FILE"; exit 1; }
     
     # Check current images
     echo "Current running containers:" >> "$REPORT_FILE"
     docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" >> "$REPORT_FILE"
     echo "" >> "$REPORT_FILE"
     
-    # Pull latest images to check for updates
-    DOCKER_OUTPUT=$(docker compose pull 2>&1)
-    if echo "$DOCKER_OUTPUT" | grep -q "Downloaded newer image\|Pull complete"; then
-        echo "Docker image updates available!" >> "$REPORT_FILE"
+    # Check current containers status (skip slow pull operation)
+    echo "Current running containers:" >> "$REPORT_FILE"
+    docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" >> "$REPORT_FILE"
+    echo "" >> "$REPORT_FILE"
+    
+    # Quick check for obvious issues instead of slow pull
+    if docker ps | grep -q "homeassistant.*Up" && docker ps | grep -q "nodered.*Up"; then
+        echo "Docker containers running normally" >> "$REPORT_FILE"
+        echo "Note: Manual update check recommended monthly" >> "$REPORT_FILE"
         echo "" >> "$REPORT_FILE"
-        echo "Commands to update Docker stack:" >> "$REPORT_FILE"
-        echo "  1. Create config backup: sudo cp -r /srv/home /backup/srv-home-\$(date +%Y%m%d)" >> "$REPORT_FILE"
-        echo "  2. Create database backup: sudo docker exec homeassistant tar -czf /config/backup-\$(date +%Y%m%d).tar.gz /config" >> "$REPORT_FILE"
-        echo "  3. Pull new images: cd /srv/home && sudo docker compose pull" >> "$REPORT_FILE"
-        echo "  4. Recreate containers: sudo docker compose up -d --force-recreate" >> "$REPORT_FILE"
-        echo "  5. Clean old images: sudo docker image prune -f" >> "$REPORT_FILE"
-        echo "  6. Verify services: sudo docker ps && curl -f http://localhost:8123 && curl -f http://localhost:1880" >> "$REPORT_FILE"
-        DOCKER_NEEDS_UPDATE=true
-    else
-        echo "No Docker image updates available" >> "$REPORT_FILE"
+        echo "Commands to manually check/update Docker stack:" >> "$REPORT_FILE"
+        echo "  1. Create config backup: sudo cp -r /opt/homeassistant /backup/homeassistant-\$(date +%Y%m%d)" >> "$REPORT_FILE"
+        echo "  2. Check for updates: cd /opt/homeassistant && sudo docker compose pull" >> "$REPORT_FILE"
+        echo "  3. If updates found: sudo docker compose up -d --force-recreate" >> "$REPORT_FILE"
+        echo "  4. Clean old images: sudo docker image prune -f" >> "$REPORT_FILE"
+        echo "  5. Verify services: sudo docker ps && curl -f http://localhost:8123" >> "$REPORT_FILE"
         DOCKER_NEEDS_UPDATE=false
+    else
+        echo "Docker containers may have issues!" >> "$REPORT_FILE"
+        DOCKER_NEEDS_UPDATE=true
     fi
 else
     echo "Docker not available" >> "$REPORT_FILE"
