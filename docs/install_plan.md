@@ -699,7 +699,6 @@ ssh ha "docker ps"
 ssh ha "sudo logrotate -d /etc/logrotate.d/ha-general-logs"
 
 # Test all Telegram notifications
-# Test all Telegram notifications
 ssh ha "/usr/local/bin/telegram-sender.sh 'Final system test - all services operational' 2"
 ```
 

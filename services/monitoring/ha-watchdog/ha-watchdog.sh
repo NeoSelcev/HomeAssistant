@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Enhanced watchdog for Raspberry Pi 3B+ with Home Assistant
+# Enhanced watchdog for System with Home Assistant
 LOG_FILE="/var/log/ha-watchdog.log"
 FAILURE_FILE="/var/log/ha-failures.log"
 CONFIG_FILE="/etc/ha-watchdog/config"

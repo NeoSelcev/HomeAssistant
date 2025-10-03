@@ -605,7 +605,7 @@ The system includes comprehensive security protection:
 - Integrated into health check for automated performance validation
 
 **🌡️ Temperature Monitoring**
-- Normal: < 70°C (Raspberry Pi optimized thresholds)
+- Normal: < 70°C (optimized thresholds)
 - High: 70-75°C (warning level)
 - Critical: > 75°C (requires attention)
 
@@ -628,7 +628,7 @@ ssh ha "stress-ng --cpu 1 --vm 1 --vm-bytes 100M -t 30s"
 - **Internet:** Blocked by UFW firewall
 - **SSH:** Key-based authentication only, passwords disabled
 
-### **Automated Setup on Raspberry Pi**
+### **Automated Setup**
 
 The health check system is automatically configured during installation:
 - **Main script**: `/usr/local/bin/system-diagnostic.sh`
@@ -760,9 +760,9 @@ docker ps
 The `install.sh` script automatically installs and configures all monitoring services, systemd units, and configurations:
 
 ```bash
-# Clone or copy the PRI-HA project to Raspberry Pi
-git clone https://github.com/NeoSelcev/PRI-HA.git
-cd PRI-HA/services
+# Clone or copy the HomeAssistant project to the system
+git clone https://github.com/NeoSelcev/HomeAssistant.git
+cd HomeAssistant/services
 
 # Run the automated installation script
 sudo ./install.sh
@@ -1083,12 +1083,10 @@ vcgencmd measure_temp
 ## �🖥️ Hardware & OS Configuration
 
 ### **Primary Node Configuration**
-- **Device**: Raspberry Pi 3B+
 - **OS**: Debian 12 (Bookworm) ARM64
-- **RAM**: 1GB LPDDR2 SDRAM  
-- **IP Address**: 192.168.1.21 (static)
-- **Hostname**: rpi3-20250711
-- **Storage**: 32GB MicroSD Card (SanDisk Ultra)
+- **IP Address**: 192.168.1.22 (static)
+- **Hostname**: homeassistant
+- **Storage**: 16GB MicroSD Card (SanDisk Ultra)
 
 ### **Network Configuration**
 - **Main network**: 192.168.1.0/24
@@ -1230,4 +1228,4 @@ PRI-HA/
   - Environmental monitoring alerts
 
 ---
-*Smart Home Monitoring System - Comprehensive health monitoring with intelligent alerting for Raspberry Pi Home Assistant installations.*
+*Smart Home Monitoring System - Comprehensive health monitoring with intelligent alerting for Home Assistant installations.*

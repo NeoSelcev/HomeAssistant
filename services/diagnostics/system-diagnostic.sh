@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 🔍 Comprehensive diagnostics script for Raspberry Pi + Home Assistant
+# 🔍 Comprehensive diagnostics script for System + Home Assistant
 # Generates a detailed report about system state
 
 REPORT_FILE="/tmp/system_diagnostic_$(date +%Y%m%d_%H%M%S).txt"
@@ -1091,7 +1091,7 @@ main() {
     echo "Report: $REPORT_FILE"
     echo ""
     
-    echo "=== RASPBERRY PI + HOME ASSISTANT DIAGNOSTICS ===" > "$REPORT_FILE"
+    echo "=== SYSTEM + HOME ASSISTANT DIAGNOSTICS ===" > "$REPORT_FILE"
     echo "Date: $(date)" >> "$REPORT_FILE"
     echo "" >> "$REPORT_FILE"
     
