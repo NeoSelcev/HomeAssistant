@@ -699,7 +699,30 @@ ssh ha "docker ps"
 ssh ha "sudo logrotate -d /etc/logrotate.d/ha-general-logs"
 
 # Test all Telegram notifications
+# Test all Telegram notifications
 ssh ha "/usr/local/bin/telegram-sender.sh 'Final system test - all services operational' 2"
+```
+
+### Important Notes About System Logs
+
+**Normal "Errors" You Can Ignore:**
+
+```bash
+# These SSH kex errors are NORMAL - they're from ha-watchdog monitoring SSH every 2 minutes
+# Check logs: sudo journalctl -u ssh.service | grep kex_exchange_identification
+# Pattern: "Connection closed by ::1" (localhost IPv6) every ~2 minutes
+# This is ha-watchdog testing SSH connectivity - completely normal behavior
+```
+
+Expected log entries:
+```
+Oct 03 20:27:01 HomeAssistant sshd[151899]: error: kex_exchange_identification: Connection closed by remote host
+Oct 03 20:27:01 HomeAssistant sshd[151899]: Connection closed by ::1 port 37060
+```
+
+These are **monitoring checks, not security threats**.
+
+## 26. Final System Verification
 ```
 
 ---
