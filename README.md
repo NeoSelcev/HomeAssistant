@@ -1,6 +1,6 @@
 # 🏠 Smart Home Monitoring System
 
-Comprehensive monitoring system for Home Assistant on Raspberry Pi 3B+ with automatic recovery, intelligent alerting, and remote management featuring advanced system diagnostics, centralized Telegram notifications, and intelligent failure detection.
+Comprehensive monitoring system for Home Assistant running on dedicated hardware with automatic recovery, intelligent alerting, and remote management featuring advanced system diagnostics, centralized Telegram notifications, and intelligent failure detection.
 
 ## 🎯 System Capabilities
 
@@ -18,10 +18,10 @@ fullcheck  # Full diagnostic with detailed output (--full)
 
 **Remote SSH Usage:**
 ```bash
-# Updated remote commands
-ssh rpi-vpn sysdiag       # Full diagnostics (was health-check)
-ssh rpi-vpn syscheck      # Quick check (was health-quick)  
-ssh rpi-vpn fullcheck     # Full detailed check (new)
+# Updated remote commands  
+ssh ha sysdiag       # Full diagnostics on main system
+ssh ha syscheck      # Quick check on main system
+ssh ha fullcheck     # Full detailed check on main system
 ```
 
 **Diagnostic Coverage:**
@@ -149,17 +149,16 @@ telegram-sender.sh "Backup completed successfully" "131"  # To BACKUP topic
 ## 📋 System Specifications
 
 ### **Hardware & OS**
-- **Device**: Raspberry Pi 3 Model B Plus Rev 1.3
-- **OS**: Debian GNU/Linux 12 (bookworm), Kernel 6.1.0-37-arm64
-- **Storage**: 15GB total, 5.3GB used (40%), 8.2GB available
-- **Memory**: 902MB total, typically ~800MB used
-- **Network**: 192.168.1.21 (local), 100.103.54.125 (VPN Tailscale)
+- **OS**: Debian GNU/Linux 12 (bookworm), Kernel 6.1.0-37+ 
+- **Storage**: 32GB eMMC, optimized for performance
+- **Memory**: 2GB DDR3L, efficient resource utilization
+- **Network**: 192.168.1.22 (local), 100.80.189.88 (VPN Tailscale)
 
 ### **Active Services Stack**
 - **Home Assistant**: Port 8123 (ghcr.io/home-assistant/home-assistant:stable)
 - **Node-RED**: Port 1880 (nodered/node-red:latest)
-- **Tailscale VPN**: 100.103.54.125 with public HTTPS access
-- **Docker**: v20.10.24 (container orchestration)
+- **Tailscale VPN**: 100.80.189.88 with public HTTPS access
+- **Docker**: Latest version (container orchestration)
 - **SSH**: Port 22 (ed25519 key authentication)
 
 ### **Docker Stack**
@@ -330,10 +329,10 @@ Intelligent event-type based throttling that replaces generic limits with priori
 ## 🌐 Tailscale VPN Configuration
 
 ### **Current Setup**
-- **Device**: rpi3-20250711 (only active device)
-- **IP**: 100.103.54.125
-- **Public URL**: https://rpi3-20250711.tail586076.ts.net/
-- **Local HTTPS**: https://100.103.54.125:8443/
+- **Main System**: HomeAssistant (192.168.1.22)
+- **IP**: 100.80.189.88
+- **Public URL**: https://homeassistant.tail586076.ts.net:8443/
+- **Local HTTPS**: https://100.80.189.88:8443/
 
 ### **Native Installation**
 - **Service**: Native systemd services (not containerized)
@@ -472,7 +471,7 @@ tts:
 
 ### **Connection**
 - Connected to Home Assistant via WebSocket with long-lived token
-- UI accessible at: http://192.168.1.21:1880/ (local) or via Tailscale VPN
+- UI accessible at: http://192.168.1.22:1880/ (local) or via Tailscale VPN
 
 ### **Installed Palettes**
 - `node-red` (core)
@@ -518,23 +517,23 @@ tts:
 
 Add to your `~/.ssh/config`:
 ```
-# Raspberry Pi Home Assistant (Local Network)
-Host rpi
-    HostName 192.168.1.21
+# Main Home Assistant System (Local Network)
+Host ha
+    HostName 192.168.1.22
     Port 22
-    User root
-    IdentityFile ~/.ssh/raspberry_pi_key
+    User user
+    IdentityFile ~/.ssh/id_ed25519
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
     ServerAliveInterval 60
     ServerAliveCountMax 3
 
-# Raspberry Pi via VPN (Tailscale)
-Host rpi-vpn
-    HostName 100.103.54.125
+# Main System via VPN (Tailscale)
+Host ha-vpn
+    HostName 100.80.189.88
     Port 22
-    User root
-    IdentityFile ~/.ssh/raspberry_pi_key
+    User user
+    IdentityFile ~/.ssh/id_ed25519
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
 ```
@@ -543,7 +542,7 @@ Host rpi-vpn
 First, create the SSH key from project documentation:
 ```bash
 # Create the private key
-cat > ~/.ssh/raspberry_pi_key << 'EOF'
+cat > ~/.ssh/id_ed25519 << 'EOF'
 -----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
 QyNTUxOQAAACBzSjnVXBPRIV7IxophtNDfOs6PqHGiMwsftPyhUzImVAAAAKjNropLza6K
@@ -555,25 +554,25 @@ QFBgc=
 EOF
 
 # Set correct permissions
-chmod 600 ~/.ssh/raspberry_pi_key
+chmod 600 ~/.ssh/id_ed25519
 ```
 
 ### **Usage Examples**
 ```bash
 # Local network connection
-ssh rpi
+ssh ha
 
 # VPN connection (global access)
-ssh rpi-vpn
+ssh ha-vpn
 
 # File copy operations
-scp ./services/install.sh rpi:/tmp/
-scp -r ./services/ rpi:/srv/home/
+scp ./services/install.sh ha:/tmp/
+scp -r ./services/ ha:/opt/homeassistant/
 
 # Remote command execution
-ssh rpi "docker ps"
-ssh rpi-vpn "sysdiag --quick"
-ssh rpi-vpn systemctl status ha-watchdog
+ssh ha "docker ps"
+ssh ha-vpn "sysdiag --quick"
+ssh ha-vpn systemctl status ha-watchdog
 ```
 
 ## 🛡️ Security Components
@@ -614,13 +613,13 @@ The system includes comprehensive security protection:
 
 ```bash
 # View firewall status
-ssh rpi-vpn "sudo ufw status"
+ssh ha "sudo ufw status"
 
 # Check fail2ban status  
-ssh rpi-vpn "sudo fail2ban-client status"
+ssh ha "sudo fail2ban-client status"
 
 # Run performance stress test
-ssh rpi-vpn "stress-ng --cpu 1 --vm 1 --vm-bytes 100M -t 30s"
+ssh ha "stress-ng --cpu 1 --vm 1 --vm-bytes 100M -t 30s"
 ```
 
 ### **Access Control**
@@ -642,18 +641,18 @@ The health check system is automatically configured during installation:
 # Generate key
 ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
 
-# Copy to Pi
-ssh-copy-id -i ~/.ssh/id_ed25519.pub root@192.168.1.21
+# Copy to main system
+ssh-copy-id -i ~/.ssh/id_ed25519.pub user@192.168.1.22
 ```
 
 ## 🚀 Installation & Setup
 
 ### **Prerequisites**
-The monitoring system requires these additional packages on Raspberry Pi:
+The monitoring system requires these additional packages on the main system:
 ```bash
 # Essential packages for monitoring functionality
 sudo apt update
-sudo apt install -y bc wireless-tools dos2unix curl htop
+sudo apt install -y bc wireless-tools dos2unix curl htop git
 ```
 
 ### **Package Dependencies:**
@@ -665,7 +664,7 @@ sudo apt install -y bc wireless-tools dos2unix curl htop
 
 ### **1. Install Docker and Core Services**
 
-**Install Docker on Raspberry Pi:**
+**Install Docker on main system:**
 ```bash
 # Install Docker
 curl -fsSL https://get.docker.com -o get-docker.sh
