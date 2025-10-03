@@ -240,11 +240,8 @@ send_telegram() {
         *) message="📊 $message" ;;
     esac
     
-    local hostname=$(hostname)
-    local full_message="[$hostname] $message"
-    
     # Send to the ERRORS topic (ID:10) - telegram-sender logs result itself
-    "$TELEGRAM_SENDER" "$full_message" "10"
+    "$TELEGRAM_SENDER" "$message" "10"
 }
 
 is_throttled() {

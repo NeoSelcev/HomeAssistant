@@ -89,7 +89,31 @@ echo 'alias temp="echo \"CPU Temperature: \$(echo \"scale=1; \$(cat /sys/class/t
 source ~/.bashrc
 ```
 
-## 8. Add User to Sudo and Configure Passwordless Sudo
+## 8. Configure System Timezone
+
+Set timezone to Israel (Jerusalem) for proper logging timestamps:
+
+```bash
+# Set timezone to Israel
+sudo timedatectl set-timezone Asia/Jerusalem
+
+# Verify timezone setting
+timedatectl
+
+# Check current time
+date
+```
+
+Expected output:
+```
+               Local time: Fri 2025-10-03 21:08:54 IDT
+           Universal time: Fri 2025-10-03 18:08:54 UTC
+                Time zone: Asia/Jerusalem (IDT, +0300)
+System clock synchronized: yes
+              NTP service: active
+```
+
+## 9. Add User to Sudo and Configure Passwordless Sudo
 
 Under root (on Wyse locally, not via SSH):
 
@@ -103,7 +127,7 @@ sudo chmod 440 /etc/sudoers.d/user-nopasswd
 exit
 ```
 
-## 9. Fix Kernel Reboot Issues
+## 10. Fix Kernel Reboot Issues
 
 Linux kernel without additional parameters often cannot properly shutdown/reboot the device:
 
@@ -141,7 +165,7 @@ Additionally if all parameters don't help, there's a workaround instead of reboo
 sudo systemctl kexec
 ```
 
-## 10. SSH Key Configuration
+## 11. SSH Key Configuration
 
 ```bash
 # Create folder for keys
@@ -159,7 +183,7 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHNKOdVcE9EhXsjGimG00N86zo+ocaIzCx+0/KFTMiZU
 chmod 600 ~/.ssh/authorized_keys
 ```
 
-## 11. Client SSH Configuration
+## 12. Client SSH Configuration
 
 On computer find SSH config folder.
 Usually it's here: `C:\Users\<your_username>\.ssh\`
@@ -208,7 +232,7 @@ PermitRootLogin no
 
 **⚠️ Warning**: After applying these changes, you will only be able to connect via SSH keys, not passwords. Make sure your SSH key is working before applying these changes!
 
-## 12. Tailscale Installation
+## 13. Tailscale Installation
 
 ```bash
 sudo apt update
@@ -264,7 +288,7 @@ systemctl list-units --type=service | grep tailscale
 curl -k https://homeassistant.tail586076.ts.net:8443
 ```
 
-## 13. Configure Firewall and DNS
+## 14. Configure Firewall and DNS
 
 ```bash
 sudo apt install -y ufw fail2ban
@@ -352,7 +376,7 @@ ssh ha "ping -c 2 google.com"
 ssh ha "ping -c 2 1.1.1.1"
 ```
 
-## 14. Updates
+## 15. Updates
 
 ```bash
 # Update sources.list for complete repositories
@@ -375,7 +399,7 @@ sudo apt full-upgrade -y
 sudo apt autoremove -y
 ```
 
-## 15. SWAP Configuration
+## 16. SWAP Configuration
 
 ```bash
 # Create 2GB SWAP file
@@ -402,7 +426,7 @@ Add line to the end:
 
 Save (Ctrl+O, Enter, Ctrl+X).
 
-## 16. Install HTOP
+## 17. Install HTOP
 
 ```bash
 sudo apt update
@@ -412,7 +436,7 @@ sudo apt install htop -y
 htop
 ```
 
-## 17. Transfer Project Files and Configure Logging
+## 18. Transfer Project Files and Configure Logging
 
 ### Copy Project Files
 ```bash
@@ -449,9 +473,14 @@ ssh ha "sudo systemctl restart systemd-journald"
 # Create log files with correct permissions
 ssh ha "sudo touch /var/log/logging-service.log && sudo chown user:user /var/log/logging-service.log"
 ssh ha "sudo chown user:user /var/log/homeassistant /var/log/monitoring /var/log/system-diagnostic"
+
+# Fix critical log permissions for monitoring services (Dell Wyse specific)
+ssh ha "sudo chown user:user /var/log/ha-watchdog.log /var/log/ha-failures.log /var/log/ha-failure-notifier.log"
+ssh ha "sudo mkdir -p /var/lib/ha-failure-notifier && sudo chown -R user:user /var/lib/ha-failure-notifier"
+ssh ha "sudo chown -R user:user /var/log/ha-*.log"
 ```
 
-## 18. Configure Telegram Notifications
+## 19. Configure Telegram Notifications
 
 ### Setup Telegram Service
 ```bash
@@ -484,7 +513,7 @@ ssh ha "sudo logrotate -d /etc/logrotate.d/ha-general-logs"
 ssh ha "sudo systemctl status systemd-journald"
 ```
 
-## 19. Configure System Monitoring Services
+## 20. Configure System Monitoring Services
 
 ### Setup Backup Service
 ```bash
@@ -513,7 +542,7 @@ ssh ha "sudo cp /tmp/homeassistant-setup/services/system/nightly-reboot/nightly-
 ssh ha "sudo cp /tmp/homeassistant-setup/services/system/nightly-reboot/nightly-reboot.logrotate /etc/logrotate.d/nightly-reboot"
 ```
 
-## 20. Configure System Diagnostics
+## 21. Configure System Diagnostics
 
 ### Setup Diagnostic Services
 ```bash
@@ -542,7 +571,7 @@ ssh ha "sysdiag --quick"
 ssh ha "sysdiag --full"
 ```
 
-## 21. Configure Home Assistant Monitoring
+## 22. Configure Home Assistant Monitoring
 
 ### Setup HA Watchdog
 ```bash
@@ -592,7 +621,7 @@ ssh ha "/usr/local/bin/telegram-sender.sh 'Monitoring setup completed on Dell Wy
 ssh ha "sysdiag --quick"
 ```
 
-## 22. Docker Installation
+## 23. Docker Installation
 
 ```bash
 curl -fsSL https://get.docker.com -o get-docker.sh
@@ -601,7 +630,7 @@ sudo usermod -aG docker user
 sudo apt install -y docker-compose-plugin
 ```
 
-## 23. Configure Docker Logging
+## 24. Configure Docker Logging
 
 ```bash
 sudo mkdir -p /etc/docker
@@ -623,7 +652,7 @@ Add:
 sudo systemctl restart docker
 ```
 
-## 24. Setup Home Assistant
+## 25. Setup Home Assistant
 
 ```bash
 sudo mkdir -p /opt/homeassistant
@@ -633,7 +662,25 @@ sudo chown -R user:user /opt/homeassistant
 docker compose up -d
 ```
 
-## 25. Final System Verification
+### Fix Backup and Telegram Services
+
+After Home Assistant is running, fix critical service issues:
+
+```bash
+# Fix Home Assistant config permissions for backup service
+ssh ha "sudo chmod -R a+r /opt/homeassistant/homeassistant"
+
+# Fix backup directory permissions  
+ssh ha "sudo chown -R user:user /opt/backups"
+
+# Test backup functionality
+ssh ha "/usr/local/bin/ha-backup.sh"
+
+# Test Telegram with hostname (should show [HomeAssistant] prefix)
+ssh ha "/usr/local/bin/telegram-sender.sh 'System setup completed successfully!' 2"
+```
+
+## 26. Final System Verification
 
 ```bash
 # Check all monitoring timers

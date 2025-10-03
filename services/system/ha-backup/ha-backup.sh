@@ -17,7 +17,7 @@ KEEP_WEEKLY_BACKUPS=4     # Keep 4 weekly backups (1 month)
 KEEP_MONTHLY_BACKUPS=3    # Keep 3 monthly backups
 
 # Backup sources
-HA_CONFIG_DIR="/var/lib/homeassistant"
+HA_CONFIG_DIR="/opt/homeassistant/homeassistant"  # Docker bind mount location
 HA_MONITORING_DIR="/opt/ha-monitoring"
 SYSTEM_CONFIG_DIRS="/etc/systemd/system /etc/telegram-sender /etc/ha-watchdog /etc/logrotate.d"
 DOCKER_DIR="/var/lib/docker/volumes"

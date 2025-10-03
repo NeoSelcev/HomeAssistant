@@ -79,6 +79,12 @@ send_telegram_message() {
         return 1
     fi
     
+    # Get hostname for message formatting
+    local hostname=$(hostname)
+    
+    # Format message with hostname prefix
+    message="[$hostname] $message"
+    
     # Truncate message if too long
     if [[ ${#message} -gt $MAX_MESSAGE_LENGTH ]]; then
     local truncated_message="${message:0:$((MAX_MESSAGE_LENGTH-50))}...\n\n[Message truncated: original length ${#message} chars]"
