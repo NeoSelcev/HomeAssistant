@@ -279,18 +279,77 @@ sudo ufw --force enable
 **⚠️ Dell Wyse specific**: Use systemd backend instead of pyinotify
 
 ```bash
-# Install and configure Fail2ban with systemd backend
-sudo apt install fail2ban
+# Create Fail2ban configuration for SSH protection
+sudo tee /etc/fail2ban/jail.local > /dev/null << 'EOF'
+[DEFAULT]
+bantime = 10m
+findtime = 10m
+maxretry = 5
+
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+backend = systemd
+journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd
+maxretry = 3
+bantime = 1h
+EOF
+
+# Enable and start Fail2ban
 sudo systemctl enable fail2ban
 sudo systemctl start fail2ban
+
+# Verify Fail2ban status
+sudo fail2ban-client status
+sudo fail2ban-client status sshd
+```
+
+Expected output:
+```
+Status
+|- Number of jail:      1
+`- Jail list:   sshd
+
+Status for the jail: sshd
+|- Filter
+|  |- Currently failed: 0
+|  |- Total failed:     0
+|  `- Journal matches:  _SYSTEMD_UNIT=ssh.service + _COMM=sshd
+`- Actions
+   |- Currently banned: 0
+   |- Total banned:     0
+   `- Banned IP list:
 ```
 
 ### Configure DNS Backup Servers
 
 ```bash
-# Add backup DNS servers for reliability (Dell Wyse can lose network)
-echo 'nameserver 8.8.8.8' | sudo tee -a /etc/resolv.conf
-echo 'nameserver 1.1.1.1' | sudo tee -a /etc/resolv.conf
+# Check current DNS configuration
+ssh ha "cat /etc/resolv.conf"
+
+# Add multiple backup DNS servers for redundancy
+ssh ha "echo 'nameserver 8.8.8.8' | sudo tee -a /etc/resolv.conf"
+ssh ha "echo 'nameserver 1.1.1.1' | sudo tee -a /etc/resolv.conf"
+
+# Verify final DNS configuration
+ssh ha "cat /etc/resolv.conf"
+```
+
+Expected output:
+```
+domain lan
+search lan
+nameserver 192.168.1.1    # Local router (primary)
+nameserver 8.8.8.8        # Google DNS (backup)
+nameserver 1.1.1.1        # Cloudflare DNS (backup)
+```
+
+```bash
+# Test DNS resolution with multiple methods
+ssh ha "getent hosts google.com"
+ssh ha "ping -c 2 google.com"
+ssh ha "ping -c 2 1.1.1.1"
 ```
 
 ## 14. Updates
