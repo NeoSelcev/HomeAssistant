@@ -1,0 +1,11 @@
+# Logrotate configuration for fail2ban Telegram notifications
+/var/log/fail2ban-telegram-notify.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 644 user user
+    sharedscripts
+}

@@ -599,6 +599,33 @@ The system includes comprehensive security protection:
 - **Status Check**: `fail2ban-client status sshd`
 - **Log Rotation**: Daily rotation, 52 weeks retention (`/etc/logrotate.d/fail2ban`)
 
+**🚨 Fail2ban Telegram Security Alerts**
+- **Real-time Notifications**: Instant Telegram alerts when IPs are banned/unbanned
+- **IP Geolocation**: Automatic location detection (country, city, ISP) for security threats
+- **Smart Integration**: Direct fail2ban action integration - no external monitoring needed
+- **Security Topic**: All alerts sent to Telegram topic 471 (Security)
+- **Alert Types**:
+  - 🔒 IP Ban notifications with geolocation and ISP info
+  - ✅ IP Unban confirmations
+  - 🛡️ Fail2ban service start/stop alerts
+- **Configuration**: `/etc/fail2ban/action.d/telegram-notify.conf`
+- **Script**: `/usr/local/bin/telegram-fail2ban-notify.sh`
+- **Logging**: `/var/log/fail2ban-telegram-notify.log`
+
+**Example Security Alert:**
+```
+🚨 SECURITY BREACH DETECTED 🚨
+
+🔒 IP BANNED: 1.2.3.4
+🏛️ Service: sshd
+📍 Location: Russia, Moscow
+🌐 ISP: Evil Hacker ISP
+⏰ Time: 2025-10-05 14:30:15
+
+🛡️ Automatic protection activated!
+⏱️ Ban duration: 1 hour
+```
+
 **📊 stress-ng**
 - Performance testing utility for comprehensive system diagnostics
 - Tests CPU, memory, disk I/O under load

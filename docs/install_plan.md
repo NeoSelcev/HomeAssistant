@@ -346,6 +346,39 @@ Status for the jail: sshd
    `- Banned IP list:
 ```
 
+### Configure Fail2ban Telegram Security Alerts
+
+**⚠️ Advanced Security**: Real-time Telegram notifications for security events
+
+```bash
+# Copy fail2ban Telegram notification files
+ssh ha "sudo cp /tmp/homeassistant-setup/services/security/fail2ban-telegram-notify/telegram-notify.conf /etc/fail2ban/action.d/"
+ssh ha "sudo cp /tmp/homeassistant-setup/services/security/fail2ban-telegram-notify/telegram-fail2ban-notify.sh /usr/local/bin/ && sudo chmod +x /usr/local/bin/telegram-fail2ban-notify.sh"
+
+# Setup logrotate for security logs
+ssh ha "sudo cp /tmp/homeassistant-setup/services/security/fail2ban-telegram-notify/fail2ban-telegram-notify.logrotate /etc/logrotate.d/fail2ban-telegram-notify"
+
+# Create log file with correct permissions
+ssh ha "sudo touch /var/log/fail2ban-telegram-notify.log && sudo chown user:user /var/log/fail2ban-telegram-notify.log"
+
+# Update fail2ban configuration to include Telegram notifications
+ssh ha "sudo cp /etc/fail2ban/jail.local /etc/fail2ban/jail.local.backup"
+ssh ha "sudo cp /tmp/homeassistant-setup/services/security/fail2ban-telegram-notify/jail.local /etc/fail2ban/jail.local"
+
+# Clear any existing fail2ban state to avoid conflicts
+ssh ha "sudo systemctl stop fail2ban"
+ssh ha "sudo rm -f /var/lib/fail2ban/fail2ban.sqlite3*"
+
+# Restart fail2ban to apply Telegram integration
+ssh ha "sudo systemctl start fail2ban"
+
+# Verify Telegram integration
+ssh ha "sudo fail2ban-client status sshd"
+
+# Test notification system
+ssh ha "/usr/local/bin/telegram-fail2ban-notify.sh start"
+```
+
 ### Configure DNS Backup Servers
 
 ```bash
@@ -720,11 +753,6 @@ Oct 03 20:27:01 HomeAssistant sshd[151899]: Connection closed by ::1 port 37060
 ```
 
 These are **monitoring checks, not security threats**.
-
-## 26. Final System Verification
-```
-
----
 
 HomeAssistant
 192.168.1.22	

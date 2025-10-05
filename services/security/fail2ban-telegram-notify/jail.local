@@ -1,0 +1,20 @@
+# Updated Fail2ban configuration with Telegram notifications
+# Dell Wyse 3040 specific configuration
+
+[DEFAULT]
+bantime = 10m
+findtime = 10m
+maxretry = 5
+backend = systemd
+
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+backend = systemd
+journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd
+maxretry = 3
+bantime = 1h
+# Add both iptables and Telegram notification actions
+action = iptables[name=SSH, port=ssh, protocol=tcp]
+         telegram-notify[name=SSH]
