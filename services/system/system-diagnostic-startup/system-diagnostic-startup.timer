@@ -1,13 +1,11 @@
 [Unit]
 Description=System Diagnostic Daily Timer
 Documentation=man:systemd.timer(5)
-Requires=system-diagnostic-startup.service
 
 [Timer]
 # Run daily at 5:30 AM
 OnCalendar=*-*-* 05:30:00
-Persistent=true
-RandomizedDelaySec=60
+Persistent=false
 
 [Install]
 WantedBy=timers.target

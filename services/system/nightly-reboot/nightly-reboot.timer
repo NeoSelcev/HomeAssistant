@@ -1,14 +1,10 @@
 [Unit]
 Description=Schedule nightly system reboot at 03:30
 Documentation=man:systemd.timer(5)
-Requires=nightly-reboot.service
 
 [Timer]
 OnCalendar=*-*-* 03:30:00
-AccuracySec=1min
-WakeSystem=false
-# CRITICAL: No Persistent=true - prevents catch-up runs after system downtime
-# WakeSystem=false ensures timer won't wake sleeping system
+Persistent=false
 
 [Install]
 WantedBy=timers.target

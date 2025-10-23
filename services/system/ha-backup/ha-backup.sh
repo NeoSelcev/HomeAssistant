@@ -3,9 +3,16 @@
 # 💾 Comprehensive System Backup Service
 # Creates automated backups of critical Home Assistant system components
 # Author: Smart Home Monitoring System
-# Version: 1.0
+# Version: 1.1 - Integrated with centralized logging
 
 SCRIPT_NAME="ha-backup"
+LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
+
+# Connect centralized logging service
+if [[ -f "$LOGGING_SERVICE" ]]; then
+    source "$LOGGING_SERVICE" 2>/dev/null
+fi
+
 LOG_FILE="/var/log/ha-backup.log"
 BACKUP_BASE_DIR="/opt/backups"
 BACKUP_DATE=$(date '+%Y%m%d_%H%M%S')
@@ -26,16 +33,27 @@ DOCKER_DIR="/var/lib/docker/volumes"
 TELEGRAM_SENDER="/usr/local/bin/telegram-sender.sh"
 CONFIG_FILE="/etc/telegram-sender/config"
 
-# Logging function
+# Logging function (fallback for legacy code, prefers centralized logging)
 log_message() {
     local level="$1"
     local message="$2"
     
-    # Special formatting for emoji levels - no timestamp or brackets
-    if [[ "$level" =~ [^[:ascii:]] ]]; then
-        echo "$level $message" | tee -a "$LOG_FILE"
+    # Use centralized logging if available
+    if command -v log_info >/dev/null 2>&1; then
+        case "$level" in
+            "ERROR") log_error "$message" ;;
+            "WARN") log_warn "$message" ;;
+            "INFO") log_info "$message" ;;
+            "DEBUG") log_debug "$message" ;;
+            *) log_info "$level $message" ;;  # Handle emoji or custom levels
+        esac
     else
-        echo "$(date '+%Y-%m-%d %H:%M:%S') [$level] [$SCRIPT_NAME] $message" | tee -a "$LOG_FILE"
+        # Fallback to file logging
+        if [[ "$level" =~ [^[:ascii:]] ]]; then
+            echo "$level $message" | tee -a "$LOG_FILE"
+        else
+            echo "$(date '+%Y-%m-%d %H:%M:%S') [$level] [$SCRIPT_NAME] $message" | tee -a "$LOG_FILE"
+        fi
     fi
 }
 

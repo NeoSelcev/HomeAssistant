@@ -543,6 +543,9 @@ check_logging_service() {
     # Test logging service functionality
     log_check "INFO" "--- Functionality Tests ---"
     
+    # Set script name for logging wrapper functions
+    SCRIPT_NAME="system-diagnostic"
+    
     # Test if logging service can be sourced
     if source /usr/local/bin/logging-service.sh 2>/dev/null; then
         log_check "OK" "Service Loading: Can be sourced"
@@ -550,6 +553,16 @@ check_logging_service() {
         # Test if main function exists
         if command -v log_structured >/dev/null 2>&1; then
             log_check "OK" "Core Function: log_structured available"
+            
+            # Test if wrapper functions are available
+            if command -v log_debug >/dev/null 2>&1 && \
+               command -v log_info >/dev/null 2>&1 && \
+               command -v log_warn >/dev/null 2>&1 && \
+               command -v log_error >/dev/null 2>&1; then
+                log_check "OK" "Wrapper Functions: All available (log_debug, log_info, log_warn, log_error)"
+            else
+                log_check "ERROR" "Wrapper Functions: Not available (require logging-service v1.1+)"
+            fi
             
             # Test actual logging functionality
             local test_message="DIAGNOSTIC_TEST_$(date +%s)"

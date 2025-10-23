@@ -78,13 +78,14 @@ extract_timestamp() {
 extract_failure_type() {
     local line="$1"
     # New format: "YYYY-MM-DD HH:MM:SS [ERROR] [ha-watchdog] [PID:123] FAILURE: SOME_FAILURE_TYPE"
-    if [[ "$line" =~ FAILURE:\ ([A-Z_][A-Z0-9_:]*) ]]; then
+    # Support uppercase, lowercase, and hyphens in event types
+    if [[ "$line" =~ FAILURE:\ ([A-Z_][A-Z0-9_:a-z-]*) ]]; then
         echo "${BASH_REMATCH[1]}"
     # Old format: "YYYY-MM-DD HH:MM:SS [WATCHDOG] SOME_FAILURE_TYPE"  
-    elif [[ "$line" =~ \[WATCHDOG\]\ ([A-Z_][A-Z0-9_:]*) ]]; then
+    elif [[ "$line" =~ \[WATCHDOG\]\ ([A-Z_][A-Z0-9_:a-z-]*) ]]; then
         echo "${BASH_REMATCH[1]}"
     # Very old format: "YYYY-MM-DD HH:MM:SS SOME_FAILURE_TYPE"
-    elif [[ "$line" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}\ ([A-Z_][A-Z0-9_:]*) ]]; then
+    elif [[ "$line" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}\ ([A-Z_][A-Z0-9_:a-z-]*) ]]; then
         echo "${BASH_REMATCH[1]}"
     else
         echo "UNKNOWN_FAILURE"
@@ -265,13 +266,37 @@ is_throttled() {
 
 restart_container() {
     local name="$1"
+    
+    # Check if container was manually stopped (ExitCode=0, Status=exited)
+    local container_state=$(docker inspect --format '{{.State.Status}}' "$name" 2>/dev/null)
+    local exit_code=$(docker inspect --format '{{.State.ExitCode}}' "$name" 2>/dev/null)
+    
+    if [[ "$container_state" == "exited" && "$exit_code" == "0" ]]; then
+        log_action "MANUAL_STOP_DETECTED: container $name (exit code 0, status exited)" "INFO"
+        send_telegram "Container $name was manually stopped (exit code 0). Not attempting auto-restart due to unless-stopped policy." "info"
+        return 2  # Special code: manually stopped
+    fi
+    
     if docker restart "$name" >/dev/null 2>&1; then
         log_action "RESTARTED: container $name"
-    send_telegram "Container $name was restarted" "warning"
-        return 0
+        local restart_result="succeeded"
+        
+        # Wait 5 seconds and check if container is still running
+        sleep 5
+        local new_state=$(docker inspect --format '{{.State.Status}}' "$name" 2>/dev/null)
+        local new_exit_code=$(docker inspect --format '{{.State.ExitCode}}' "$name" 2>/dev/null)
+        
+        if [[ "$new_state" != "running" ]]; then
+            restart_result="failed after restart (exit code: $new_exit_code)"
+            send_telegram "Container $name restart failed. Status: $new_state, exit code: $new_exit_code" "critical"
+            return 1
+        else
+            send_telegram "Container $name was successfully restarted" "warning"
+            return 0
+        fi
     else
         log_action "RESTART_FAILED: container $name"
-    send_telegram "Failed to restart container $name" "critical"
+        send_telegram "Failed to restart container $name (restart command failed)" "critical"
         return 1
     fi
 }
@@ -332,6 +357,20 @@ process_failure() {
             ;;
         *"CONTAINER_DOWN:"*)
             local name=$(echo "$event_type" | sed 's/.*CONTAINER_DOWN://' | cut -d: -f1)
+            log_action "CONTAINER_DOWN detected: event_type='$event_type', extracted_name='$name'" "DEBUG"
+            
+            if [[ -z "$name" ]]; then
+                log_action "ERROR: Container name extraction failed from event_type '$event_type'" "ERROR"
+                return
+            fi
+            
+            # Apply throttling BEFORE restart attempt to prevent spam
+            # Use 10 minute throttle for container restarts
+            if is_throttled "CONTAINER_DOWN:$name" 10; then
+                log_action "THROTTLED: Container $name restart skipped (< 10 min since last attempt)" "DEBUG"
+                return
+            fi
+            
             restart_container "$name"
             return
             ;;

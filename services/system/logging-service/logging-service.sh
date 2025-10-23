@@ -3,19 +3,16 @@
 # 📝 Centralized structured logging service
 # Used for unified formatting and log rotation
 # Author: Smart Home Monitoring System
-# Version: 1.0
+# Version: 1.1 - Fixed CONFIG_FILE name collision
 
-CONFIG_FILE="/etc/logging-service/config"
+LOGGING_CONFIG_FILE="/etc/logging-service/config"
 
-# Load configuration
-if [[ -f "$CONFIG_FILE" ]]; then
-    source "$CONFIG_FILE"
-else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [ERROR] Config file not found: $CONFIG_FILE" >&2
-    exit 1
+# Load configuration (optional - use defaults if not found)
+if [[ -f "$LOGGING_CONFIG_FILE" ]]; then
+    source "$LOGGING_CONFIG_FILE"
 fi
 
-# Default values
+# Default values (if not set in config)
 LOG_FORMAT="${LOG_FORMAT:-plain}"  # plain, json, syslog
 MAX_MESSAGE_LENGTH="${MAX_MESSAGE_LENGTH:-2048}"
 ENABLE_REMOTE_LOGGING="${ENABLE_REMOTE_LOGGING:-false}"
@@ -140,6 +137,9 @@ get_log_file() {
         "telegram-sender") echo "/var/log/telegram-sender.log" ;;      # ✅ Individual log for Telegram
         "update-checker") echo "/var/log/ha-update-checker.log" ;;     # ✅ Individual log for updates
         "nightly-reboot") echo "/var/log/ha-reboot.log" ;;             # ✅ Individual log for reboots
+        "system-diagnostic-startup") echo "/var/log/system-diagnostic-startup.log" ;; # 🆕 NEW mapping
+        "ha-backup") echo "/var/log/ha-backup.log" ;;                  # 🆕 NEW mapping
+        "boot-notifier") echo "/var/log/boot-notifier.log" ;;          # 🆕 NEW mapping
         *) echo "/var/log/ha-${service}.log" ;;                        # ✅ Pattern for new services
     esac
 }
@@ -234,6 +234,44 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         "metrics")
             log_self "DEBUG" "Processing metrics log call for service: $2"
             log_with_metrics "$2" "$3" "$4" "$5" "$6"
+}
+
+# ========================================
+# Convenience wrapper functions for common use
+# ========================================
+
+# These functions should be used when sourced by other scripts
+# They don't require passing service name repeatedly
+
+log_debug() {
+    local message="$1"
+    local service="${SCRIPT_NAME:-unknown}"
+    log_structured "$service" "DEBUG" "$message"
+}
+
+log_info() {
+    local message="$1"
+    local service="${SCRIPT_NAME:-unknown}"
+    log_structured "$service" "INFO" "$message"
+}
+
+log_warn() {
+    local message="$1"
+    local service="${SCRIPT_NAME:-unknown}"
+    log_structured "$service" "WARN" "$message"
+}
+
+log_error() {
+    local message="$1"
+    local service="${SCRIPT_NAME:-unknown}"
+    log_structured "$service" "ERROR" "$message"
+}
+
+log_critical() {
+    local message="$1"
+    local service="${SCRIPT_NAME:-unknown}"
+    log_structured "$service" "CRITICAL" "$message"
+}
             ;;
         *)
             log_self "DEBUG" "Processing structured log call for service: $1"

@@ -1,11 +1,18 @@
 #!/bin/bash
 # Nightly Reboot Script with Telegram Notification
 # Part of Smart Home Monitoring System
+# Version: 1.1 - Integrated with centralized logging
 
+SCRIPT_NAME="nightly-reboot"
+LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
 LOG_FILE="/var/log/ha-reboot.log"
 CONFIG_FILE="/etc/ha-watchdog/config"
 TELEGRAM_SENDER="/usr/local/bin/telegram-sender.sh"
-LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
+
+# Connect centralized logging service
+if [[ -f "$LOGGING_SERVICE" ]]; then
+    source "$LOGGING_SERVICE" 2>/dev/null
+fi
 
 # Load configuration
 if [ -f "$CONFIG_FILE" ]; then
@@ -15,23 +22,24 @@ else
     exit 1
 fi
 
-# Connect centralized logging service (REQUIRED)
-if [[ -f "$LOGGING_SERVICE" ]] && [[ -r "$LOGGING_SERVICE" ]]; then
-    source "$LOGGING_SERVICE" 2>/dev/null
-    if ! command -v log_structured >/dev/null 2>&1; then
-        echo "ERROR: logging-service loaded, but log_structured function is not available" >&2
-        exit 1
-    fi
-else
-    echo "ERROR: Centralized logging-service not found: $LOGGING_SERVICE" >&2
-    exit 1
-fi
-
-# Function to log messages (ONLY through logging-service)
+# Logging function (wrapper for centralized logging)
 log_message() {
     local message="$1"
     local level="${2:-INFO}"
-    log_structured "nightly-reboot" "$level" "$message"
+    
+    # Use centralized logging if available
+    if command -v log_info >/dev/null 2>&1; then
+        case "$level" in
+            "ERROR") log_error "$message" ;;
+            "WARN") log_warn "$message" ;;
+            "INFO") log_info "$message" ;;
+            "DEBUG") log_debug "$message" ;;
+            *) log_info "$message" ;;
+        esac
+    else
+        # Fallback to file logging
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [$level] [$SCRIPT_NAME] $message" >> "$LOG_FILE"
+    fi
 }
 
 # Function to send Telegram notification
@@ -114,6 +122,12 @@ log_message "System metrics - Memory: $MEMORY_USAGE, Disk: $DISK_USAGE"
 log_message "Stopping ha-watchdog timer before reboot to prevent false failure alerts"
 systemctl stop ha-watchdog.timer || log_message "Failed to stop ha-watchdog timer" "WARN"
 log_message "ha-watchdog timer stopped successfully"
+
+# Create planned reboot marker for boot-notifier
+PLANNED_REBOOT_MARKER="/var/lib/nightly-reboot/planned-reboot.marker"
+mkdir -p "$(dirname "$PLANNED_REBOOT_MARKER")"
+touch "$PLANNED_REBOOT_MARKER"
+log_message "Created planned reboot marker: $PLANNED_REBOOT_MARKER"
 
 # Wait 30 seconds for notification to be sent and any running watchdog to complete
 sleep 30

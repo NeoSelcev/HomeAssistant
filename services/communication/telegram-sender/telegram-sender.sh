@@ -3,45 +3,39 @@
 # 📱 Universal script for sending Telegram messages with topic support
 # Used by all monitoring system components
 # Author: Smart Home Monitoring System
-# Version: 1.0
+# Version: 2.0 - Integrated with centralized logging
 
+SCRIPT_NAME="telegram-sender"
+LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
 CONFIG_FILE="/etc/telegram-sender/config"
+
+# Connect centralized logging service FIRST
+if [[ -f "$LOGGING_SERVICE" ]] && [[ -r "$LOGGING_SERVICE" ]]; then
+    source "$LOGGING_SERVICE" 2>/dev/null
+    if ! command -v log_info >/dev/null 2>&1; then
+        echo "ERROR: logging-service wrapper functions not available" >&2
+        exit 1
+    fi
+else
+    echo "ERROR: Centralized logging-service not found: $LOGGING_SERVICE" >&2
+    exit 1
+fi
 
 # Load configuration
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
 else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [ERROR] Config file not found: $CONFIG_FILE" >> "${TELEGRAM_LOG_FILE:-/var/log/telegram-sender.log}"
+    log_error "Config file not found: $CONFIG_FILE"
     exit 1
 fi
 
 # Set variables from config or default values
-LOG_FILE="${TELEGRAM_LOG_FILE:-/var/log/telegram-sender.log}"
 TIMEOUT="${TELEGRAM_TIMEOUT:-10}"
 RETRY_COUNT="${TELEGRAM_RETRY_COUNT:-3}"
 RETRY_DELAY="${TELEGRAM_RETRY_DELAY:-2}"
 MAX_MESSAGE_LENGTH="${TELEGRAM_MAX_MESSAGE_LENGTH:-4096}"
 MAX_PREVIEW_LENGTH="${TELEGRAM_MAX_PREVIEW_LENGTH:-100}"
 DEFAULT_PARSE_MODE="${TELEGRAM_PARSE_MODE_DEFAULT:-HTML}"
-LOG_LEVEL="${TELEGRAM_LOG_LEVEL:-INFO}"
-
-# Logging function with caller process information
-log_message() {
-    local level="$1"
-    local message="$2"
-    local caller_process="${3:-$(ps -o comm= -p $PPID 2>/dev/null || echo 'unknown')}"
-    local caller_pid="${4:-$PPID}"
-    
-    # Check logging level
-    case "$LOG_LEVEL" in
-        "ERROR") [[ "$level" == "ERROR" ]] || return 0 ;;
-        "WARN") [[ "$level" =~ ^(ERROR|WARN)$ ]] || return 0 ;;
-        "INFO") [[ "$level" =~ ^(ERROR|WARN|INFO|SUCCESS)$ ]] || return 0 ;;
-        "DEBUG") ;; # Log everything
-    esac
-    
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [$level] [PID:$caller_pid] [$caller_process] $message" >> "$LOG_FILE"
-}
 
 # Function to get topic name by ID
 get_topic_name() {
@@ -64,18 +58,16 @@ send_telegram_message() {
     local message="$1"
     local topic_id="$2"  # Optional parameter
     local parse_mode="${3:-$DEFAULT_PARSE_MODE}"
-    local caller_process="$(ps -o comm= -p $PPID 2>/dev/null || echo 'unknown')"
-    local caller_pid="$PPID"
     
     # Check required parameters
     if [[ -z "$message" ]]; then
-        log_message "ERROR" "Message is empty" "$caller_process" "$caller_pid"
+        log_error "Message is empty"
         echo "ERROR: Message cannot be empty"
         return 1
     fi
     
     if [[ -z "$TELEGRAM_BOT_TOKEN" ]] || [[ -z "$TELEGRAM_CHAT_ID" ]]; then
-        log_message "ERROR" "Telegram credentials not configured" "$caller_process" "$caller_pid"
+        log_error "Telegram credentials not configured"
         echo "ERROR: Telegram credentials not configured"
         return 1
     fi
@@ -89,7 +81,7 @@ send_telegram_message() {
     # Truncate message if too long
     if [[ ${#message} -gt $MAX_MESSAGE_LENGTH ]]; then
     local truncated_message="${message:0:$((MAX_MESSAGE_LENGTH-50))}...\n\n[Message truncated: original length ${#message} chars]"
-        log_message "WARN" "Message truncated from ${#message} to ${#truncated_message} characters" "$caller_process" "$caller_pid"
+        log_warn "Message truncated from ${#message} to ${#truncated_message} characters"
         message="$truncated_message"
     fi
     
@@ -113,13 +105,13 @@ send_telegram_message() {
         topic_name=$(get_topic_name "$topic_id")
     fi
     
-    log_message "INFO" "Attempting to send message to topic '$topic_name' (ID: ${topic_id:-'none'})" "$caller_process" "$caller_pid"
-    log_message "DEBUG" "Message preview: $(echo "$message" | head -c $MAX_PREVIEW_LENGTH)..." "$caller_process" "$caller_pid"
+    log_info "Attempting to send message to topic '$topic_name' (ID: ${topic_id:-'none'})"
+    log_debug "Message preview: $(echo "$message" | head -c $MAX_PREVIEW_LENGTH)..."
     
     # Send message with retries
     local attempt=1
     while [[ $attempt -le $RETRY_COUNT ]]; do
-        log_message "DEBUG" "Attempt $attempt/$RETRY_COUNT" "$caller_process" "$caller_pid"
+        log_debug "Attempt $attempt/$RETRY_COUNT"
         
         local response=$(curl -s -w "HTTP_CODE:%{http_code}" --max-time "$TIMEOUT" \
             -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
@@ -131,14 +123,14 @@ send_telegram_message() {
     # Process result
         if [[ "$http_code" == "200" ]] && echo "$json_response" | grep -q '"ok":true'; then
             local message_id=$(echo "$json_response" | grep -o '"message_id":[0-9]*' | cut -d: -f2)
-            log_message "SUCCESS" "Message sent successfully to topic '$topic_name' (message_id: $message_id, attempt: $attempt)" "$caller_process" "$caller_pid"
+            log_info "Message sent successfully to topic '$topic_name' (message_id: $message_id, attempt: $attempt)"
             return 0
         else
             local error_description=$(echo "$json_response" | grep -o '"description":"[^"]*"' | cut -d'"' -f4)
-            log_message "WARN" "Attempt $attempt failed. HTTP: $http_code, Error: ${error_description:-'Unknown error'}" "$caller_process" "$caller_pid"
+            log_warn "Attempt $attempt failed. HTTP: $http_code, Error: ${error_description:-'Unknown error'}"
             
             if [[ $attempt -lt $RETRY_COUNT ]]; then
-                log_message "INFO" "Retrying in $RETRY_DELAY seconds..." "$caller_process" "$caller_pid"
+                log_info "Retrying in $RETRY_DELAY seconds..."
                 sleep "$RETRY_DELAY"
             fi
         fi
@@ -147,8 +139,8 @@ send_telegram_message() {
     done
     
     # All attempts failed
-    log_message "ERROR" "Failed to send message to topic '$topic_name' after $RETRY_COUNT attempts" "$caller_process" "$caller_pid"
-    log_message "DEBUG" "Final response: $json_response" "$caller_process" "$caller_pid"
+    log_error "Failed to send message to topic '$topic_name' after $RETRY_COUNT attempts"
+    log_debug "Final response: $json_response"
     return 1
 }
 

@@ -1,0 +1,16 @@
+[Unit]
+Description=Boot Notification Service
+Documentation=https://github.com/YourRepo/HomeAssistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/boot-notifier.sh
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

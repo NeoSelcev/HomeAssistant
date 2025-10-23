@@ -1,30 +1,25 @@
 #!/bin/bash
 # System Update Checker with Detailed Report
 # Part of Smart Home Monitoring System
+# Version: 1.1 - Integrated with centralized logging
 
+SCRIPT_NAME="update-checker"
+LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
 LOG_FILE="/var/log/ha-update-checker.log"
 REPORT_FILE="/var/log/ha-update-report.log"
 CONFIG_FILE="/etc/ha-watchdog/config"
 TELEGRAM_SENDER="/usr/local/bin/telegram-sender.sh"
-LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
+
+# Connect centralized logging service
+if [[ -f "$LOGGING_SERVICE" ]]; then
+    source "$LOGGING_SERVICE" 2>/dev/null
+fi
 
 # Load configuration
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 else
     echo "$(date): Configuration file not found: $CONFIG_FILE" >> "$LOG_FILE"
-    exit 1
-fi
-
-# Connect centralized logging service (REQUIRED)
-if [[ -f "$LOGGING_SERVICE" ]] && [[ -r "$LOGGING_SERVICE" ]]; then
-    source "$LOGGING_SERVICE" 2>/dev/null
-    if ! command -v log_structured >/dev/null 2>&1; then
-        echo "ERROR: logging-service loaded, but log_structured function is not available" >&2
-        exit 1
-    fi
-else
-    echo "ERROR: Centralized logging-service not found: $LOGGING_SERVICE" >&2
     exit 1
 fi
 

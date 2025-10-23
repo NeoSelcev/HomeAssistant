@@ -35,23 +35,25 @@ mkdir -p "$(dirname "$FAILURE_FILE")" 2>/dev/null
 
 # Centralized logging ONLY through logging-service
 LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
+SCRIPT_NAME="ha-watchdog"
+
 if [[ -f "$LOGGING_SERVICE" ]] && [[ -r "$LOGGING_SERVICE" ]]; then
     source "$LOGGING_SERVICE" 2>/dev/null
     if ! command -v log_structured >/dev/null 2>&1; then
-        echo "ERROR: logging-service loaded, but log_structured function is not available" >&2
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [ERROR] [ha-watchdog] [PID:$$] [systemd] logging-service loaded, but log_structured function is not available" >> "$LOG_FILE"
+        exit 1
+    fi
+    # Check wrapper functions availability
+    if ! command -v log_debug >/dev/null 2>&1; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [ERROR] [ha-watchdog] [PID:$$] [systemd] logging-service loaded, but log_debug function is not available" >> "$LOG_FILE"
         exit 1
     fi
 else
-    echo "ERROR: Centralized logging-service not found: $LOGGING_SERVICE" >&2
-    echo "Monitoring system requires logging-service to operate" >&2
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [ERROR] [ha-watchdog] [PID:$$] [systemd] Centralized logging-service not found: $LOGGING_SERVICE" >> "$LOG_FILE"
     exit 1
 fi
 
-log() {
-    local message="$1"
-    local level="${2:-INFO}"
-    log_structured "ha-watchdog" "$level" "$message"
-}
+# Note: log_debug, log_info, log_warn, log_error are now provided by logging-service.sh
 
 log_failure() {
     local message="$1"
@@ -61,7 +63,7 @@ log_failure() {
     log_structured "ha-failures" "ERROR" "FAILURE: $message"
     
     # And duplicate to main watchdog log for debugging
-    log "FAILURE: $message" "ERROR"
+    log_error "FAILURE: $message"
 }
 
 check_internet() {
@@ -182,10 +184,19 @@ check_ssh_security() {
     
     # Check if fail2ban is protecting SSH (critical for security)
     if command -v fail2ban-client >/dev/null 2>&1; then
-        if ! systemctl is-active fail2ban >/dev/null 2>&1; then
-            log_failure "FAIL2BAN_DOWN"
+        if ! systemctl is-active --quiet fail2ban; then
+            log_failure "FAIL2BAN_NOT_RUNNING"
             ((failed++))
+        else
+            # Check if SSH jail is enabled (requires sudo)
+            if ! sudo fail2ban-client status sshd &>/dev/null; then
+                log_failure "FAIL2BAN_SSH_JAIL_NOT_ACTIVE"
+                ((failed++))
+            fi
         fi
+    else
+        log_failure "FAIL2BAN_NOT_INSTALLED"
+        ((failed++))
     fi
     
     return $failed
@@ -383,53 +394,53 @@ check_wifi_signal() {
 
 # Main comprehensive check
 main() {
-    log "Starting comprehensive system health check (20 components)" "INFO"
+    log_info "Starting comprehensive system health check (20 components)"
     
     local total_failures=0
     
     # Basic connectivity checks
-    log "Running network connectivity checks..." "DEBUG"
+    log_debug "Running network connectivity checks..."
     check_internet || ((total_failures++))
     check_gateway || ((total_failures++))
     check_network_interface || ((total_failures++))
     
     # System resource checks
-    log "Checking system resources..." "DEBUG"
+    log_debug "Checking system resources..."
     check_memory || ((total_failures++))
     check_disk || ((total_failures++))
     check_temperature || ((total_failures++))
     check_system_load || ((total_failures++))
     
     # Services and containers
-    log "Verifying services and containers..." "DEBUG"
+    log_debug "Verifying services and containers..."
     check_containers || ((total_failures++))
     check_services || ((total_failures++))
     check_critical_systemd_services || ((total_failures++))
     
     # Remote access services
-    log "Testing remote access..." "DEBUG"
+    log_debug "Testing remote access..."
     check_ssh_access || ((total_failures++))
     check_ssh_security || ((total_failures++))
     check_tailscale_status || ((total_failures++))
     # check_public_access || ((total_failures++))  # Disabled: Tailscale Funnel not configured
     
     # System health (storage, power, time, logs)
-    log "Analyzing system health..." "DEBUG"
+    log_debug "Analyzing system health..."
     check_sd_card_health || ((total_failures++))
     check_power_supply || ((total_failures++))
     check_ntp_sync || ((total_failures++))
     check_log_sizes || ((total_failures++))
     
     # Extended application-specific checks
-    log "Running extended diagnostics..." "DEBUG"
+    log_debug "Running extended diagnostics..."
     check_ha_database || ((total_failures++))
     check_swap_usage || ((total_failures++))
     check_wifi_signal || ((total_failures++))
     
     if [[ $total_failures -eq 0 ]]; then
-        log "Health check completed: ALL 19 CHECKS PASSED ✓" "INFO"
+        log_info "Health check completed: ALL 19 CHECKS PASSED ✓"
     else
-        log "Health check completed: $total_failures failure(s) detected across system components" "WARN"
+        log_warn "Health check completed: $total_failures failure(s) detected across system components"
     fi
 }
 

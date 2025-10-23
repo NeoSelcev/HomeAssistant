@@ -1,0 +1,12 @@
+[Unit]
+Description=Boot Notification Timer
+Documentation=https://github.com/YourRepo/HomeAssistant
+Requires=boot-notifier.service
+
+[Timer]
+# Run 30 seconds after boot
+OnBootSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
