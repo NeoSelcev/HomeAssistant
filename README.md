@@ -318,6 +318,69 @@ Intelligent event-type based throttling that replaces generic limits with priori
 #### **System Health (6)**
 - SD card errors, power supply/throttling, NTP sync, log sizes, HA database integrity, swap usage
 
+## 📝 Centralized Logging System
+
+### **Overview**
+
+All monitoring services use unified centralized logging through `logging-service.sh v1.1`:
+
+**Key Features:**
+- 🎯 **Unified Format** - Consistent log structure across all services
+- 🔧 **Wrapper Functions** - Simple `log_debug()`, `log_info()`, `log_warn()`, `log_error()`, `log_critical()`
+- ⚙️ **Service Name Auto-detection** - Uses `SCRIPT_NAME` variable for automatic identification
+- 📊 **Structured Logging** - JSON support for metrics and extra data
+- 🔄 **Backward Compatible** - Optional config file, works with defaults
+
+**Log Format:**
+```
+YYYY-MM-DD HH:MM:SS [LEVEL] [service-name] [PID:12345] [caller] Message text
+```
+
+**Integrated Services (11 total):**
+- ✅ `ha-watchdog.sh` - System health monitoring
+- ✅ `ha-failure-notifier.sh` - Failure detection and recovery
+- ✅ `telegram-sender.sh` - Telegram notifications
+- ✅ `ha-backup.sh` - Backup operations
+- ✅ `nightly-reboot.sh` - Scheduled reboots
+- ✅ `update-checker.sh` - Update detection
+- ✅ `system-diagnostic.sh` - System diagnostics
+- ✅ `system-diagnostic-startup.sh` - Boot diagnostics
+- ✅ `boot-notifier.sh` - Boot notifications
+- ✅ `ha-monitoring-control.sh` - Service management
+- ✅ `telegram-fail2ban-notify.sh` - Security alerts
+
+**Usage in Scripts:**
+```bash
+#!/bin/bash
+SCRIPT_NAME="my-service"  # Auto-detected in logs
+
+LOGGING_SERVICE="/usr/local/bin/logging-service.sh"
+if [[ -f "$LOGGING_SERVICE" ]]; then
+    source "$LOGGING_SERVICE" 2>/dev/null
+fi
+
+# Use wrapper functions
+log_info "Service started successfully"
+log_warn "High memory usage detected"
+log_error "Connection failed"
+log_debug "Debug information"
+log_critical "Critical system failure"
+```
+
+**Configuration (optional):**
+```bash
+# /etc/logging-service/config
+LOG_FORMAT="plain"           # plain|json
+DEFAULT_LOG_DIR="/var/log"
+ENABLE_DEBUG=false
+```
+
+**Benefits:**
+- ✅ **No code duplication** - Single logging implementation
+- ✅ **Easy maintenance** - Update logging in one place
+- ✅ **Consistent debugging** - Same format everywhere
+- ✅ **Performance tracking** - Built-in metrics support
+
 ### **Intelligent Features**
 
 - **Smart throttling**: Prevents notification spam with configurable intervals (5min-4hrs)
