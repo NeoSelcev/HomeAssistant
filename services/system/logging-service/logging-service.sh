@@ -137,9 +137,9 @@ get_log_file() {
         "telegram-sender") echo "/var/log/telegram-sender.log" ;;      # ✅ Individual log for Telegram
         "update-checker") echo "/var/log/ha-update-checker.log" ;;     # ✅ Individual log for updates
         "nightly-reboot") echo "/var/log/ha-reboot.log" ;;             # ✅ Individual log for reboots
-        "system-diagnostic-startup") echo "/var/log/system-diagnostic-startup.log" ;; # 🆕 NEW mapping
-        "ha-backup") echo "/var/log/ha-backup.log" ;;                  # 🆕 NEW mapping
-        "boot-notifier") echo "/var/log/boot-notifier.log" ;;          # 🆕 NEW mapping
+        "system-diagnostic-startup") echo "/var/log/system-diagnostic-startup.log" ;; # ✅ Individual log for diagnostic reports
+        "ha-backup") echo "/var/log/ha-backup.log" ;;                  # ✅ Individual log for backups
+        "boot-notifier") echo "/var/log/boot-notifier.log" ;;          # ✅ Individual log for boot notifications
         *) echo "/var/log/ha-${service}.log" ;;                        # ✅ Pattern for new services
     esac
 }
@@ -208,34 +208,6 @@ log_with_metrics() {
     log_structured "$service" "$level" "$message" "$extra_data"
 }
 
-# Main logic (if script is run directly)
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    # Create log file for logging-service itself if it does not exist
-    if [[ ! -f "$LOGGING_SERVICE_LOG" ]]; then
-        mkdir -p "$(dirname "$LOGGING_SERVICE_LOG")" 2>/dev/null
-        touch "$LOGGING_SERVICE_LOG"
-        chmod 644 "$LOGGING_SERVICE_LOG"
-        log_self "INFO" "Logging service initialized, log file created: $LOGGING_SERVICE_LOG"
-    fi
-    
-    case "${1:-}" in
-        "")
-            echo "ERROR: Parameters required"
-            echo "Usage: $0 <service> <level> <message> [extra_json]"
-            echo "   or: $0 simple <service> <message> [level]"
-            echo "   or: $0 metrics <service> <level> <message> <duration_ms> [status_code]"
-            log_self "WARN" "Called without parameters"
-            exit 1
-            ;;
-        "simple")
-            log_self "DEBUG" "Processing simple log call for service: $2"
-            log_simple "$2" "$3" "$4"
-            ;;
-        "metrics")
-            log_self "DEBUG" "Processing metrics log call for service: $2"
-            log_with_metrics "$2" "$3" "$4" "$5" "$6"
-}
-
 # ========================================
 # Convenience wrapper functions for common use
 # ========================================
@@ -272,6 +244,33 @@ log_critical() {
     local service="${SCRIPT_NAME:-unknown}"
     log_structured "$service" "CRITICAL" "$message"
 }
+
+# Main logic (if script is run directly)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    # Create log file for logging-service itself if it does not exist
+    if [[ ! -f "$LOGGING_SERVICE_LOG" ]]; then
+        mkdir -p "$(dirname "$LOGGING_SERVICE_LOG")" 2>/dev/null
+        touch "$LOGGING_SERVICE_LOG"
+        chmod 644 "$LOGGING_SERVICE_LOG"
+        log_self "INFO" "Logging service initialized, log file created: $LOGGING_SERVICE_LOG"
+    fi
+    
+    case "${1:-}" in
+        "")
+            echo "ERROR: Parameters required"
+            echo "Usage: $0 <service> <level> <message> [extra_json]"
+            echo "   or: $0 simple <service> <message> [level]"
+            echo "   or: $0 metrics <service> <level> <message> <duration_ms> [status_code]"
+            log_self "WARN" "Called without parameters"
+            exit 1
+            ;;
+        "simple")
+            log_self "DEBUG" "Processing simple log call for service: $2"
+            log_simple "$2" "$3" "$4"
+            ;;
+        "metrics")
+            log_self "DEBUG" "Processing metrics log call for service: $2"
+            log_with_metrics "$2" "$3" "$4" "$5" "$6"
             ;;
         *)
             log_self "DEBUG" "Processing structured log call for service: $1"
