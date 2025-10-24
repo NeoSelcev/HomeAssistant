@@ -18,7 +18,7 @@ fullcheck  # Full diagnostic with detailed output (--full)
 
 **Remote SSH Usage:**
 ```bash
-# Updated remote commands  
+# Updated remote commands
 ssh ha sysdiag       # Full diagnostics on main system
 ssh ha syscheck      # Quick check on main system
 ssh ha fullcheck     # Full detailed check on main system
@@ -42,7 +42,7 @@ ssh ha fullcheck     # Full detailed check on main system
 **💾 System Resources (8 checks)**
 - Memory usage (total/used/available), disk space, CPU load, temperature monitoring
 
-**🌐 Extended Network Diagnostics (11 checks)**  
+**🌐 Extended Network Diagnostics (11 checks)**
 - Internet access, gateway, DNS, network interfaces, WiFi/Ethernet status, IP addresses
 
 **🐳 Docker Services (12+ checks)**
@@ -99,7 +99,7 @@ Centralized **telegram-sender v1.0** service with topic-based routing and intell
 
 **Supported Topics:**
 - 🏠 **SYSTEM (ID: 2)** - System messages and general information
-- 🚨 **ERRORS (ID: 10)** - Critical errors and system failures  
+- 🚨 **ERRORS (ID: 10)** - Critical errors and system failures
 - 📦 **UPDATES (ID: 9)** - Package and Docker image updates
 - 🔄 **RESTART (ID: 4)** - Reboots and service restarts
 - 🔍 **SYSTEM_DIAGNOSTIC (ID: 123)** - System diagnostic reports and health checks
@@ -129,7 +129,7 @@ telegram-sender.sh "Backup completed successfully" "131"  # To BACKUP topic
 ```
 /usr/local/bin/telegram-sender.sh     # Main script
 /etc/telegram-sender/config           # Configuration
-/var/log/telegram-sender.log          # Sending logs  
+/var/log/telegram-sender.log          # Sending logs
 /etc/logrotate.d/telegram-sender      # Log rotation
 ```
 
@@ -149,7 +149,7 @@ telegram-sender.sh "Backup completed successfully" "131"  # To BACKUP topic
 ## 📋 System Specifications
 
 ### **Hardware & OS**
-- **OS**: Debian GNU/Linux 12 (bookworm), Kernel 6.1.0-37+ 
+- **OS**: Debian GNU/Linux 12 (bookworm), Kernel 6.1.0-37+
 - **Storage**: 32GB eMMC, optimized for performance
 - **Memory**: 2GB DDR3L, efficient resource utilization
 - **Network**: 192.168.1.22 (local), 100.80.189.88 (VPN Tailscale)
@@ -171,12 +171,12 @@ services:
     logging:
       max-size: "10m"
       max-file: "7"
-    
+
   nodered:
     image: nodered/node-red:latest
     ports: 1880
     logging:
-      max-size: "10m" 
+      max-size: "10m"
       max-file: "7"
 ```
 
@@ -253,8 +253,8 @@ The Home Assistant admin interface is protected by **two layers of authenticatio
 
 **Authentication Flow**:
 ```
-User → Cloudflare Access (GitHub/Google OAuth) 
-     → HTTP Basic Auth (nginx-proxy) 
+User → Cloudflare Access (GitHub/Google OAuth)
+     → HTTP Basic Auth (nginx-proxy)
      → Home Assistant Admin Panel
 ```
 
@@ -410,7 +410,7 @@ Automated log management prevents disk space exhaustion:
 
 ```bash
 ha-monitoring-control log-sizes      # Check all log sizes
-ha-monitoring-control rotate-logs    # Force log rotation  
+ha-monitoring-control rotate-logs    # Force log rotation
 ha-monitoring-control clean-journal  # Clean systemd journal
 ```
 
@@ -433,7 +433,7 @@ ha-monitoring-control clean-journal  # Clean systemd journal
 Intelligent event-type based throttling that replaces generic limits with priority-based quotas:
 
 - 🔴 **Critical Events** (HA_SERVICE_DOWN, MEMORY_CRITICAL): 20 events/30min
-- 🟡 **High Priority** (HIGH_LOAD, CONNECTION_LOST): 10 events/30min  
+- 🟡 **High Priority** (HIGH_LOAD, CONNECTION_LOST): 10 events/30min
 - 🟠 **Warnings** (MEMORY_WARNING, DISK_WARNING): 5 events/30min
 - 🔵 **Info Events** (other): 3 events/30min
 - ⏰ **Rolling Window** - 30-minute sliding window with automatic cleanup
@@ -468,7 +468,7 @@ Intelligent event-type based throttling that replaces generic limits with priori
 #### **Network & Connectivity (4)**
 - Internet connectivity, gateway reachability, network interface status, WiFi signal strength
 
-#### **System Resources (4)** 
+#### **System Resources (4)**
 - Memory availability, disk space, CPU temperature, system load average
 
 #### **Services & Containers (3)**
@@ -620,7 +620,7 @@ services:
       options:
         max-size: "10m"
         max-file: "7"
-    
+
   nodered:
     image: nodered/node-red:latest
     ports: 1880
@@ -867,7 +867,7 @@ The system includes comprehensive security protection:
 # View firewall status
 ssh ha "sudo ufw status"
 
-# Check fail2ban status  
+# Check fail2ban status
 ssh ha "sudo fail2ban-client status"
 
 # Run performance stress test
@@ -876,7 +876,7 @@ ssh ha "stress-ng --cpu 1 --vm 1 --vm-bytes 100M -t 30s"
 
 ### **Access Control**
 - **Local Network:** Full access (192.168.1.0/24)
-- **Tailscale VPN:** Full access (100.64.0.0/10)  
+- **Tailscale VPN:** Full access (100.64.0.0/10)
 - **Internet:** Blocked by UFW firewall
 - **SSH:** Key-based authentication only, passwords disabled
 
@@ -884,7 +884,7 @@ ssh ha "stress-ng --cpu 1 --vm 1 --vm-bytes 100M -t 30s"
 
 The health check system is automatically configured during installation:
 - **Main script**: `/usr/local/bin/system-diagnostic.sh`
-- **Quick access**: `sysdiag`, `diag`, `diagnostic`, `syscheck`, `fullcheck` commands  
+- **Quick access**: `sysdiag`, `diag`, `diagnostic`, `syscheck`, `fullcheck` commands
 - **Reports**: Saved to `/tmp/system_diagnostic_YYYYMMDD_HHMMSS.txt`
 - **Logs**: Diagnostic logs created automatically during execution
 
@@ -909,7 +909,7 @@ sudo apt install -y bc wireless-tools dos2unix curl htop git
 
 ### **Package Dependencies:**
 - **bc**: Calculator for mathematical operations in monitoring scripts
-- **wireless-tools**: WiFi signal strength monitoring (iwconfig command)  
+- **wireless-tools**: WiFi signal strength monitoring (iwconfig command)
 - **dos2unix**: Convert Windows line endings in configuration files
 - **curl**: HTTP requests for Telegram notifications and API calls
 - **htop**: Enhanced system process monitor for diagnostics and troubleshooting
@@ -963,7 +963,7 @@ services:
       options:
         max-size: "10m"
         max-file: "7"
-    
+
   nodered:
     image: nodered/node-red:latest
     container_name: nodered
@@ -1032,7 +1032,7 @@ sudo ./install.sh
 - **System Diagnostic**: `/usr/local/bin/system-diagnostic.sh` with aliases (`sysdiag`, `diag`, `diagnostic`, `syscheck`, `fullcheck`)
 - **Telegram Sender**: `/usr/local/bin/telegram-sender.sh` with config template in `/etc/telegram-sender/`
 - **HA Watchdog**: Service + timer for 20-point health monitoring every 2 minutes
-- **HA Failure Notifier**: Service + timer for smart alerts and recovery every 5 minutes  
+- **HA Failure Notifier**: Service + timer for smart alerts and recovery every 5 minutes
 - **Nightly Reboot**: Service + timer for daily maintenance reboot at 03:30
 - **Update Checker**: Service + timer for weekday update analysis at 09:00
 - **Backup System**: Service + timer for automated Home Assistant backups
@@ -1054,7 +1054,7 @@ sudo ./install.sh
 /etc/systemd/system/
 ├── ha-watchdog.service           # Health monitoring service
 ├── ha-watchdog.timer             # Every 2 minutes
-├── ha-failure-notifier.service   # Alert & recovery service  
+├── ha-failure-notifier.service   # Alert & recovery service
 ├── ha-failure-notifier.timer     # Every 5 minutes
 ├── nightly-reboot.service        # Maintenance reboot
 ├── nightly-reboot.timer          # Daily at 03:30
@@ -1092,7 +1092,7 @@ sudo ./install.sh
 ```
 /var/log/
 ├── ha-watchdog.log              # Health monitoring logs
-├── ha-failure-notifier.log      # Alert service logs  
+├── ha-failure-notifier.log      # Alert service logs
 ├── ha-failures.log              # Detected failures
 ├── ha-reboot.log                # Reboot service logs
 ├── ha-update-checker.log        # Update analysis logs
@@ -1108,7 +1108,7 @@ sudo ./install.sh
 **🚀 Service Startup:**
 After installation, all services are automatically:
 - **Enabled**: Start automatically on boot
-- **Started**: Begin monitoring immediately  
+- **Started**: Begin monitoring immediately
 - **Configured**: Ready with default settings
 - **Logged**: All activities are logged with rotation
 
@@ -1274,7 +1274,7 @@ curl -v http://localhost:8123
 ping 8.8.8.8
 systemctl status networking
 
-# WiFi signal strength  
+# WiFi signal strength
 iwconfig wlan0
 
 # Port availability
@@ -1299,7 +1299,7 @@ vcgencmd measure_temp
 ### **Performance Optimizations**
 
 - **Reduced I/O**: Watchdog runs every 2min instead of 15s (8x less frequent)
-- **Smart dependencies**: Services start only when prerequisites are ready  
+- **Smart dependencies**: Services start only when prerequisites are ready
 - **Efficient logging**: Proper log rotation prevents disk space issues
 - **Load balancing**: Randomized delays prevent system load spikes
 - **Enhanced monitoring**: Expanded from 17 to 20 comprehensive health checks
@@ -1309,13 +1309,13 @@ vcgencmd measure_temp
 
 ✅ **All 4 monitoring services active and scheduled:**
 - ha-watchdog.timer (every 2 minutes)
-- ha-failure-notifier.timer (every 5 minutes)  
+- ha-failure-notifier.timer (every 5 minutes)
 - nightly-reboot.timer (daily at 3:30 AM)
 - update-checker.timer (weekdays at 9:00 AM ±30min)
 
-✅ **System packages installed:** bc, wireless-tools, dos2unix, curl  
-✅ **Telegram integration:** Active and sending notifications  
-✅ **Auto-recovery:** Container and network interface restart capabilities  
+✅ **System packages installed:** bc, wireless-tools, dos2unix, curl
+✅ **Telegram integration:** Active and sending notifications
+✅ **Auto-recovery:** Container and network interface restart capabilities
 ✅ **Boot persistence:** All services enabled for automatic startup
 
 ## � Monitoring and Diagnostics
@@ -1424,7 +1424,7 @@ PRI-HA/
 │   │   └── ha-general-logs.logrotate     # General log rotation config
 │   ├── logrotate/                        # System log rotation configs
 │   │   ├── homeassistant                 # HA log rotation
-│   │   ├── fail2ban                      # Security log rotation  
+│   │   ├── fail2ban                      # Security log rotation
 │   │   ├── ufw                           # Firewall log rotation
 │   │   └── journald.conf                 # Systemd journal limits
 │   └── tailscale/                        # Tailscale VPN services
