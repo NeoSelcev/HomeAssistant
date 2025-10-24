@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Assistant Test Page</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #41b883 0%, #35495e 100%);
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            font-size: 3em;
+            margin: 0 0 20px 0;
+        }
+        p {
+            font-size: 1.2em;
+            margin: 10px 0;
+        }
+        .status {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #41b883;
+            border-radius: 25px;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        .info {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .icon {
+            font-size: 5em;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🏠</div>
+        <h1>Home Assistant Test Page</h1>
+        <p>Cloudflare Tunnel is <span class="status">✅ ACTIVE</span></p>
+        <div class="info">
+            <p><strong>System:</strong> Home Assistant Monitoring</p>
+            <p><strong>Location:</strong> Dell Wyse 3040</p>
+            <p><strong>Network:</strong> 192.168.1.22</p>
+            <p><strong>Tunnel:</strong> Cloudflare Edge Network</p>
+        </div>
+    </div>
+</body>
+</html>

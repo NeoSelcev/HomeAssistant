@@ -180,6 +180,168 @@ services:
       max-file: "7"
 ```
 
+## 🌐 Cloudflare Tunnel Security
+
+### **Cloudflared Service**
+
+- **Type**: Docker container (cloudflared-tunnel)
+- **Image**: `cloudflare/cloudflared:latest`
+- **Config**: `/opt/homeassistant/cloudflared/config.yml`
+- **Function**: Secure tunnel to Cloudflare edge network
+- **Benefits**: Zero-trust access, automatic SSL, DDoS protection
+
+### **Security Features**
+
+- **Tunnel Protocol**: QUIC/HTTP2 over TLS 1.3
+- **IP Protection**: Real server IP hidden from public
+- **Automatic SSL**: Certificate management via Cloudflare
+- **DDoS Mitigation**: Edge-level protection
+- **Access Control**: Zero Trust authentication available
+- **Geographic Distribution**: Multiple edge locations
+
+### **Tunnel Configuration**
+
+- **Tunnel ID**: `[TO BE CONFIGURED]`
+- **Domain**: `[YOUR-DOMAIN]`
+- **Service**: Routes traffic to local services securely
+- **Monitoring**: Health checks and connection status
+
+### **Ingress Configuration**
+
+**Configuration File**: `/opt/homeassistant/cloudflared/config.yml`
+
+```yaml
+tunnel: [TUNNEL_ID]
+credentials-file: /etc/cloudflared/[TUNNEL_ID].json
+
+ingress:
+  # Home Assistant Admin Panel (with Basic Auth + Cloudflare Access)
+  - hostname: ha.[YOUR-DOMAIN]
+    service: http://ha-proxy:8080
+  # Test web page via Docker network
+  - hostname: test.[YOUR-DOMAIN]
+    service: http://test-web:80
+  # Catch-all rule (required)
+  - service: http_status:404
+```
+
+**Ingress Rules**:
+- **Docker Networking**: Routes to container names (ha-proxy:8080, test-web:80)
+- **Hostname Routing**: Specific subdomains route to different services
+- **Fallback Rule**: 404 response for undefined routes
+- **Container Integration**: Direct connection to Docker containers
+- **Validation**: `docker exec cloudflared-tunnel cloudflared tunnel ingress validate`
+
+### **Dual Authentication Security**
+
+**Multi-Layer Protection for Home Assistant Admin Panel**:
+
+The Home Assistant admin interface is protected by **two layers of authentication**:
+
+1. **Cloudflare Access (OAuth Layer)**
+   - GitHub OAuth integration
+   - Google OAuth integration (optional)
+   - Organization/email-based access control
+   - Session management and device trust
+   - Zero Trust architecture
+
+2. **HTTP Basic Authentication (Application Layer)**
+   - nginx-proxy with Basic Auth
+   - Username: `admin`
+   - Password: Configured in `/opt/homeassistant/nginx-auth/.htpasswd`
+   - Additional security layer after OAuth
+
+**Authentication Flow**:
+```
+User → Cloudflare Access (GitHub/Google OAuth) 
+     → HTTP Basic Auth (nginx-proxy) 
+     → Home Assistant Admin Panel
+```
+
+**nginx-proxy Configuration**:
+- **Container**: `ha-proxy`
+- **Image**: `nginx:alpine`
+- **Config**: `/opt/homeassistant/nginx-auth/nginx.conf`
+- **Credentials**: `/opt/homeassistant/nginx-auth/.htpasswd`
+- **Port**: 8080 (internal, accessed via Cloudflare Tunnel)
+- **Proxy Target**: `http://homeassistant:8123`
+
+**Access URLs**:
+- **Admin Panel**: `https://ha.[YOUR-DOMAIN]` (dual auth required)
+- **Test Page**: `https://test.[YOUR-DOMAIN]` (public)
+
+**Login Methods**:
+
+Due to Chrome/Chromium browser limitations with Basic Auth over Cloudflare tunnels, a custom login page is provided:
+
+1. **Custom Login Form** (Recommended):
+   - Navigate to `https://ha.[YOUR-DOMAIN]`
+   - Enter HTTP Basic Auth credentials in the web form:
+     - Username: `admin`
+     - Password: `[YOUR-PASSWORD]`
+   - Then login to Home Assistant with your HA credentials
+
+2. **URL with Credentials** (Alternative):
+   - `https://admin:[YOUR-PASSWORD]@ha.[YOUR-DOMAIN]`
+   - Use when browser doesn't show authentication dialog
+
+3. **Standard Basic Auth Dialog** (Firefox/Safari):
+   - Some browsers may show the standard authentication prompt
+   - Enter HTTP Basic Auth: `admin` / `[YOUR-PASSWORD]`
+   - Then Home Assistant login with your HA credentials
+
+**Note**: Chrome often doesn't display the Basic Auth dialog for HTTPS connections through Cloudflare. The custom login form solves this issue with a user-friendly interface.
+
+**Cloudflare Access OAuth Setup**:
+
+For complete dual authentication setup with GitHub/Google OAuth, see the **Installation Plan**: `docs/install_plan.md` (section "Setup Cloudflare Tunnel").
+
+OAuth Applications Configuration:
+- **GitHub OAuth**: Create at https://github.com/settings/developers
+- **Google OAuth**: Create at https://console.cloud.google.com/apis/credentials
+- **Cloudflare Zero Trust**: Configure at https://one.dash.cloudflare.com
+
+Credentials Location:
+- **In Project**: `docs/cloudflare-credentials.txt` (to be created)
+- **On Server**: `/opt/homeassistant/credentials/cloudflare-credentials.txt`
+
+### **Troubleshooting**
+
+**502 Bad Gateway Error**:
+
+If you see "502 Bad Gateway" after authentication, this means nginx-proxy can't reach Home Assistant container.
+
+**Solution**:
+```bash
+# Check container status
+ssh ha "docker ps | grep -E 'homeassistant|ha-proxy'"
+
+# Restart nginx-proxy to apply changes
+ssh ha "docker restart ha-proxy"
+
+# Check nginx logs
+ssh ha "docker logs ha-proxy"
+
+# Verify containers are healthy
+ssh ha "docker ps"
+```
+
+### **Security Setup**
+
+**Access Security**:
+- **Origin Protection**: Server IP completely hidden
+- **Certificate Management**: Automatic SSL/TLS via Cloudflare
+- **No Inbound Ports**: Only outbound connections from server
+- **Firewall Friendly**: No need to open ports in firewall
+- **Dual Authentication**: OAuth + Basic Auth for admin access
+- **Zero Trust**: Cloudflare Access with identity verification
+
+**Monitoring Integration**:
+- **Container Health**: Monitored by ha-watchdog Docker checks
+- **Connection Status**: Tracked in system diagnostics via container logs
+- **Public Access**: Validated via HTTPS health checks
+- **Tunnel Metrics**: Connection count and uptime monitoring via Docker stats
+
 ## 🔧 System Configuration
 
 ### **Swap Configuration**
@@ -1282,6 +1444,330 @@ PRI-HA/
         ├── Home plan - routers.jpg       # Router placement
         └── Home plan - smart devices.JPEG # Device locations
 ```
+
+## 🔍 Docker Audit Logging
+
+Advanced Docker security monitoring with system-level auditing to track container operations, configuration changes, and security events.
+
+### Purpose
+
+Monitor all Docker daemon activities including:
+- Container lifecycle events (create, start, stop, delete)
+- Image operations (pull, push, delete)
+- Volume and network modifications
+- Docker daemon configuration changes
+- Security-sensitive operations (privileged containers, capability additions)
+
+### Implementation
+
+**Audit Rules Location:**
+```bash
+/etc/audit/rules.d/docker.rules
+```
+
+**Key Monitoring Points:**
+- Docker socket: `/var/run/docker.sock`
+- Docker daemon binary: `/usr/bin/dockerd`
+- Docker configuration: `/etc/docker/daemon.json`
+- Container runtime: `/usr/bin/containerd`
+- Docker Compose files: `/opt/homeassistant/docker-compose*.yml`
+
+**Example Audit Rules:**
+```bash
+# Docker daemon execution
+-w /usr/bin/dockerd -p x -k docker_daemon
+
+# Docker socket access
+-w /var/run/docker.sock -p rwxa -k docker_socket
+
+# Container runtime
+-w /usr/bin/containerd -p x -k container_runtime
+-w /usr/bin/runc -p x -k container_runtime
+
+# Docker configuration changes
+-w /etc/docker/ -p wa -k docker_config
+-w /etc/default/docker -p wa -k docker_config
+
+# Docker Compose files
+-w /opt/homeassistant/docker-compose.yml -p wa -k docker_compose
+-w /opt/homeassistant/docker-compose-with-tunnel.yml -p wa -k docker_compose
+
+# Container systemd service
+-w /etc/systemd/system/docker.service.d/ -p wa -k docker_systemd
+```
+
+### Viewing Audit Logs
+
+```bash
+# All Docker-related events
+ausearch -k docker_daemon -k docker_socket -k container_runtime -k docker_config
+
+# Recent Docker socket access
+ausearch -k docker_socket -ts recent
+
+# Docker daemon executions
+ausearch -k docker_daemon -x /usr/bin/dockerd
+
+# Configuration changes
+ausearch -k docker_config -ts today
+
+# Specific container events
+ausearch -k docker_socket | grep "container_name"
+
+# Failed Docker operations
+ausearch -k docker_socket --success no
+```
+
+### Journal Retention
+
+Configure systemd journal to retain Docker logs:
+
+```bash
+# /etc/systemd/journald.conf
+[Journal]
+SystemMaxUse=500M
+SystemKeepFree=1G
+MaxRetentionSec=1month
+MaxFileSec=1week
+```
+
+**Apply configuration:**
+```bash
+sudo systemctl restart systemd-journald
+```
+
+### Integration with Monitoring
+
+Docker audit events are integrated with system diagnostics:
+
+```bash
+# Check Docker audit logs
+sudo ausearch -k docker_daemon -k docker_socket --start recent
+
+# View Docker container logs
+sudo docker logs homeassistant
+sudo docker logs nodered
+sudo docker logs cloudflared-tunnel
+
+# Check Docker daemon journal
+sudo journalctl -u docker -n 100 --no-pager
+```
+
+### Benefits
+
+- ✅ **Security Compliance** - Track all privileged operations
+- ✅ **Incident Response** - Forensic analysis of container breaches
+- ✅ **Change Tracking** - Audit configuration modifications
+- ✅ **Troubleshooting** - Identify failed operations
+- ✅ **Performance Analysis** - Monitor container lifecycle patterns
+
+## 🔒 System Auditing with auditd
+
+Linux Audit Daemon (`auditd`) provides comprehensive system-level security monitoring for critical system operations.
+
+### Purpose
+
+Monitor security-critical system events:
+- SSH authentication attempts (successful and failed)
+- systemd service changes
+- Firewall rule modifications (UFW/iptables)
+- File access to sensitive directories
+- Privilege escalation (sudo usage)
+- User and group modifications
+- System configuration changes
+
+### Implementation
+
+**Audit Rules Location:**
+```bash
+/etc/audit/rules.d/audit.rules
+```
+
+**Key Monitoring Categories:**
+
+**1. SSH Access Monitoring**
+```bash
+# SSH daemon
+-w /usr/sbin/sshd -p x -k ssh_daemon
+
+# SSH configuration
+-w /etc/ssh/sshd_config -p wa -k ssh_config
+
+# SSH keys
+-w /home/macbookpro12-1/.ssh/ -p wa -k ssh_keys
+-w /root/.ssh/ -p wa -k ssh_keys
+
+# PAM authentication
+-w /var/log/auth.log -p wa -k auth_log
+```
+
+**2. systemd Service Changes**
+```bash
+# systemd unit files
+-w /etc/systemd/system/ -p wa -k systemd_units
+-w /usr/lib/systemd/system/ -p wa -k systemd_units
+
+# systemd control
+-a always,exit -F arch=b64 -S execve -F path=/bin/systemctl -k systemd_control
+```
+
+**3. Firewall Changes**
+```bash
+# UFW configuration
+-w /etc/ufw/ -p wa -k firewall_config
+-w /usr/sbin/ufw -p x -k firewall_cmd
+
+# iptables direct access
+-w /usr/sbin/iptables -p x -k firewall_iptables
+-w /usr/sbin/ip6tables -p x -k firewall_iptables
+
+# Netfilter configuration
+-a always,exit -F arch=b64 -S setsockopt -F a0=41 -k netfilter_config
+```
+
+**4. Privilege Escalation**
+```bash
+# sudo usage
+-w /usr/bin/sudo -p x -k sudo_usage
+-w /etc/sudoers -p wa -k sudo_config
+-w /etc/sudoers.d/ -p wa -k sudo_config
+
+# su command
+-w /usr/bin/su -p x -k privilege_escalation
+```
+
+**5. User and Group Changes**
+```bash
+# Password files
+-w /etc/passwd -p wa -k user_modification
+-w /etc/shadow -p wa -k user_modification
+-w /etc/group -p wa -k group_modification
+
+# User management commands
+-w /usr/sbin/useradd -p x -k user_management
+-w /usr/sbin/userdel -p x -k user_management
+-w /usr/sbin/usermod -p x -k user_management
+-w /usr/sbin/groupadd -p x -k group_management
+-w /usr/sbin/groupdel -p x -k group_management
+```
+
+**6. Monitoring Service Files**
+```bash
+# Home Assistant monitoring scripts
+-w /usr/local/bin/ha-watchdog.sh -p wa -k monitoring_scripts
+-w /usr/local/bin/ha-failure-notifier.sh -p wa -k monitoring_scripts
+-w /usr/local/bin/system-diagnostic.sh -p wa -k monitoring_scripts
+-w /usr/local/bin/ha-monitoring-control -p wa -k monitoring_scripts
+
+# Configuration files
+-w /etc/ha-watchdog.conf -p wa -k monitoring_config
+-w /etc/telegram-sender/ -p wa -k telegram_config
+```
+
+### Viewing Audit Logs
+
+```bash
+# SSH access attempts
+ausearch -k ssh_daemon -k ssh_config -ts today
+
+# Failed SSH logins
+ausearch -k ssh_daemon --success no
+
+# systemd service changes
+ausearch -k systemd_units -k systemd_control -ts recent
+
+# Firewall modifications
+ausearch -k firewall_config -k firewall_cmd -ts today
+
+# sudo usage
+ausearch -k sudo_usage -ts today
+
+# User modifications
+ausearch -k user_modification -k group_modification
+
+# All security events today
+ausearch -ts today | grep -E "ssh|sudo|systemd|firewall|user"
+
+# Generate audit report
+aureport --summary
+
+# Failed authentication attempts
+aureport --auth --failed
+
+# Command execution report
+aureport -x --summary
+```
+
+### Audit Search Examples
+
+```bash
+# Who accessed SSH configuration?
+ausearch -k ssh_config -i
+
+# What systemd services were modified?
+ausearch -k systemd_units -ts this-week -i
+
+# Firewall rule changes in last 24 hours
+ausearch -k firewall_config -ts recent -i
+
+# All sudo commands by specific user
+ausearch -k sudo_usage -ui 1000
+
+# Failed privilege escalation attempts
+ausearch -k sudo_usage --success no -ts today
+
+# Monitoring script modifications
+ausearch -k monitoring_scripts -k monitoring_config
+```
+
+### Integration with System Diagnostics
+
+Audit logs are checked by `system-diagnostic.sh`:
+
+```bash
+# Run diagnostics with audit check
+sysdiag
+
+# Check specific audit categories
+sudo ausearch -k ssh_daemon -ts recent
+sudo ausearch -k firewall_config -ts today
+sudo ausearch -k systemd_units -ts recent
+```
+
+### Audit Log Retention
+
+Configure audit log retention:
+
+```bash
+# /etc/audit/auditd.conf
+max_log_file = 10
+num_logs = 10
+max_log_file_action = ROTATE
+space_left = 100
+space_left_action = SYSLOG
+admin_space_left = 50
+admin_space_left_action = SUSPEND
+```
+
+**Total storage:** ~100MB (10 files × 10MB each)
+
+### Benefits
+
+- ✅ **Security Monitoring** - Track all security-sensitive operations
+- ✅ **Compliance** - Meet security audit requirements
+- ✅ **Forensics** - Investigate security incidents
+- ✅ **Change Tracking** - Audit all system modifications
+- ✅ **Intrusion Detection** - Detect unauthorized access attempts
+- ✅ **Accountability** - Track user actions and system changes
+
+### Audit Best Practices
+
+1. **Regular Review** - Check audit logs weekly
+2. **Automated Alerts** - Configure auditd to alert on critical events
+3. **Log Retention** - Keep at least 30 days of audit logs
+4. **Secure Storage** - Protect audit logs from tampering
+5. **Performance Impact** - Monitor system performance with auditing enabled
+6. **Rule Optimization** - Only audit security-relevant events
 
 ## ⚠️ Known Issues
 
